@@ -32,6 +32,27 @@ want to prototype strategies visually before coding them, TradingView is
 still a fine place to do that — just port the finished rule into
 `src/strategy.py`.
 
+### Spot vs perpetual futures (swap)
+
+Set `market_type: swap` in `config.yaml` to trade USDT-margined perpetuals
+instead of spot. A few things change in this mode:
+
+- **A "sell" signal opens a short**, it does not close an existing long —
+  there's no position-management/close/take-profit logic here, only
+  entries on confirmed crossovers. Telegram labels switch to `OPEN LONG` /
+  `OPEN SHORT` so this isn't confused with spot buy/sell.
+- **`leverage` and `margin_mode`** (in `config.yaml`) are applied per symbol
+  the first time an order is confirmed for it. Leverage only reduces the
+  margin needed to open a given position size — `order_amount_quote` is
+  still the position's notional size, not the margin, so liquidation risk
+  scales directly with leverage.
+- **Kucoin futures use a separate API key** from Kucoin spot — create it
+  under Kucoin's Futures API management (not the spot one) with Futures
+  trading permission. Binance futures reuse the same key, but you must
+  enable "Futures" on that API key and have a funded USDT-M futures wallet.
+- **`extra_symbols` needs the unified swap format** in this mode, e.g.
+  `BTC/USDT:USDT` rather than `BTC/USDT`.
+
 ## Setup
 
 ```bash

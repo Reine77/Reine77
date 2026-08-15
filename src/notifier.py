@@ -5,7 +5,8 @@ from telegram.ext import Application, CallbackQueryHandler, ContextTypes
 
 logger = logging.getLogger(__name__)
 
-SIDE_LABELS = {"buy": "BUY", "sell": "SELL"}
+SPOT_LABELS = {"buy": "BUY", "sell": "SELL"}
+SWAP_LABELS = {"buy": "OPEN LONG", "sell": "OPEN SHORT"}
 
 
 class TelegramNotifier:
@@ -15,6 +16,7 @@ class TelegramNotifier:
     def __init__(self, config, on_confirm):
         self.config = config
         self.on_confirm = on_confirm
+        self.side_labels = SWAP_LABELS if config.market_type == "swap" else SPOT_LABELS
         self.app = Application.builder().token(config.telegram_bot_token).build()
         self.app.add_handler(CallbackQueryHandler(self._handle_callback))
         self._pending = {}
@@ -28,9 +30,13 @@ class TelegramNotifier:
 
     async def send_signal(self, symbol, side, price):
         signal_id = self._register(symbol, side, price)
-        label = SIDE_LABELS[side]
+        label = self.side_labels[side]
+        leverage_line = (
+            f"Leverage: {self.config.leverage}x ({self.config.margin_mode})\n" if self.config.market_type == "swap" else ""
+        )
         text = (
             f"*{label} signal*: {symbol}\n"
+            f"{leverage_line}"
             f"Price: {price:.6f} {self.config.quote_currency}\n"
             f"MA crossover ({self.config.fast_ma}/{self.config.slow_ma} {self.config.ma_type.upper()}, "
             f"{self.config.timeframe}) detected."

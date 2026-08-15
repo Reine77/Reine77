@@ -25,3 +25,13 @@ order_amount_quote: 50
 # When true, confirmed trades are logged but never sent to the exchange.
 # Flip to false only once you've validated signals and trust the setup.
 dry_run: true
+
+# spot or swap (USDT-margined perpetual futures). In swap mode, a "buy"
+# signal opens a long and a "sell" signal opens a short — it does not
+# manage or close existing positions, and extra_symbols must use ccxt's
+# unified swap format (e.g. "BTC/USDT:USDT", not "BTC/USDT").
+market_type: spot
+
+# Only used when market_type is swap.
+leverage: 2
+margin_mode: isolated # isolated or cross

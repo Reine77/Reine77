@@ -26,6 +26,9 @@ class Config:
     poll_interval_seconds: int
     order_amount_quote: float
     dry_run: bool
+    market_type: str
+    leverage: float
+    margin_mode: str
 
 
 def load_config(path: str = "config.yaml") -> Config:
@@ -49,4 +52,7 @@ def load_config(path: str = "config.yaml") -> Config:
         poll_interval_seconds=raw.get("poll_interval_seconds", 300),
         order_amount_quote=raw.get("order_amount_quote", 50),
         dry_run=raw.get("dry_run", True),
+        market_type=raw.get("market_type", "spot"),
+        leverage=raw.get("leverage", 2),
+        margin_mode=raw.get("margin_mode", "isolated"),
     )
