@@ -1,0 +1,27 @@
+# Which exchange to connect to. Any ccxt id works (binance, kucoin, ...).
+exchange: binance
+
+# Only spot pairs quoted in this currency are considered for the top_n scan.
+quote_currency: USDT
+
+# Scan the top N pairs by 24h quote volume, plus always include extra_symbols.
+top_n: 10
+extra_symbols:
+  - BTC/USDT
+  - ETH/USDT
+
+# Candle timeframe and moving average periods for the crossover.
+timeframe: 1h
+fast_ma: 9
+slow_ma: 21
+ma_type: ema # ema or sma
+
+# How often to re-scan the watchlist.
+poll_interval_seconds: 300
+
+# Quote-currency amount to spend per confirmed trade.
+order_amount_quote: 50
+
+# When true, confirmed trades are logged but never sent to the exchange.
+# Flip to false only once you've validated signals and trust the setup.
+dry_run: true
