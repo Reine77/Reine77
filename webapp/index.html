@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trading Bot Settings</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #262b36;
+    --text: #e8eaed;
+    --muted: #8b93a3;
+    --accent: #4f8cff;
+    --accent-hover: #3d78e8;
+    --danger: #ff6b6b;
+    --ok: #4fd18b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 2rem 1rem 4rem;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: 0.9rem; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .card h2 { font-size: 1rem; margin: 0 0 1rem; color: var(--text); }
+  .card h2 .hint { color: var(--muted); font-weight: normal; font-size: 0.8rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.35rem; }
+  input, select {
+    width: 100%;
+    background: #0d0f13;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 0.55rem 0.65rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .field { margin-bottom: 0.9rem; }
+  .row-check { display: flex; align-items: center; gap: 0.5rem; }
+  .row-check input { width: auto; }
+  .swap-only { display: none; }
+  .swap-only.active { display: block; }
+  #strategy-params { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--border); }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 0.7rem 1.4rem;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  .status { margin-top: 0.75rem; font-size: 0.85rem; min-height: 1.2em; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--danger); }
+  .warn {
+    background: #2a1f14;
+    border: 1px solid #5a4020;
+    color: #e8c07a;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    margin-bottom: 1.5rem;
+  }
+  .strategy-desc { color: var(--muted); font-size: 0.8rem; margin: -0.5rem 0 1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Trading Bot Settings</h1>
+  <p class="subtitle">Configures config.yaml + .env for the scanner. Nothing here places a trade by itself — signals still go through Telegram Confirm/Skip.</p>
+
+  <div class="warn">
+    This page writes API keys straight to local files with no login of its own.
+    Only run it on localhost or a trusted private network — never expose it to the public internet as-is.
+  </div>
+
+  <form id="settings-form">
+    <div class="card">
+      <h2>Exchange</h2>
+      <div class="grid">
+        <div class="field">
+          <label for="exchange">Exchange</label>
+          <select id="exchange" name="exchange"></select>
+        </div>
+        <div class="field">
+          <label for="market_type">Market type</label>
+          <select id="market_type" name="market_type">
+            <option value="spot">Spot</option>
+            <option value="swap">Perpetual futures (swap)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="quote_currency">Quote currency</label>
+          <input id="quote_currency" name="quote_currency" value="USDT" />
+        </div>
+        <div class="field">
+          <label for="top_n">Scan top N by volume</label>
+          <input id="top_n" name="top_n" type="number" min="0" value="10" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="extra_symbols">Always-included symbols (comma separated)</label>
+        <input id="extra_symbols" name="extra_symbols" placeholder="BTC/USDT, ETH/USDT" />
+      </div>
+      <div class="grid swap-only" id="swap-fields">
+        <div class="field">
+          <label for="leverage">Leverage</label>
+          <input id="leverage" name="leverage" type="number" min="1" step="1" value="2" />
+        </div>
+        <div class="field">
+          <label for="margin_mode">Margin mode</label>
+          <select id="margin_mode" name="margin_mode">
+            <option value="isolated">Isolated</option>
+            <option value="cross">Cross</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="field">
+          <label for="exchange_api_key">API key</label>
+          <input id="exchange_api_key" name="exchange_api_key" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="exchange_api_secret">API secret</label>
+          <input id="exchange_api_secret" name="exchange_api_secret" type="password" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="exchange_api_password">API passphrase <span class="hint">(Kucoin only)</span></label>
+          <input id="exchange_api_password" name="exchange_api_password" type="password" autocomplete="off" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>LLM second opinion <span class="hint">(optional)</span></h2>
+      <div class="grid">
+        <div class="field">
+          <label for="llm_provider">Provider</label>
+          <select id="llm_provider" name="llm_provider">
+            <option value="">Disabled</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="llm_model">Model <span class="hint">(optional override)</span></label>
+          <input id="llm_model" name="llm_model" placeholder="uses provider default" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="llm_api_key">API key</label>
+        <input id="llm_api_key" name="llm_api_key" type="password" autocomplete="off" />
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Strategy</h2>
+      <div class="field">
+        <label for="strategy_name">Active strategy</label>
+        <select id="strategy_name" name="strategy_name"></select>
+      </div>
+      <div id="strategy-params"></div>
+    </div>
+
+    <div class="card">
+      <h2>Bot behavior</h2>
+      <div class="grid">
+        <div class="field">
+          <label for="timeframe">Candle timeframe</label>
+          <input id="timeframe" name="timeframe" value="1h" />
+        </div>
+        <div class="field">
+          <label for="poll_interval_seconds">Poll interval (seconds)</label>
+          <input id="poll_interval_seconds" name="poll_interval_seconds" type="number" min="10" value="300" />
+        </div>
+        <div class="field">
+          <label for="order_amount_quote">Order size (quote currency)</label>
+          <input id="order_amount_quote" name="order_amount_quote" type="number" min="0" step="0.01" value="50" />
+        </div>
+      </div>
+      <div class="field row-check">
+        <input id="dry_run" name="dry_run" type="checkbox" checked />
+        <label for="dry_run" style="margin:0;">Dry run (log trades, never send to the exchange)</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Telegram</h2>
+      <div class="grid">
+        <div class="field">
+          <label for="telegram_bot_token">Bot token</label>
+          <input id="telegram_bot_token" name="telegram_bot_token" type="password" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="telegram_chat_id">Chat ID</label>
+          <input id="telegram_chat_id" name="telegram_chat_id" />
+        </div>
+      </div>
+    </div>
+
+    <button type="submit">Save settings</button>
+    <div class="status" id="status"></div>
+  </form>
+</div>
+
+<script>
+let META = null;
+
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  Object.entries(attrs || {}).forEach(([key, value]) => {
+    if (key === "text") node.textContent = value;
+    else node.setAttribute(key, value);
+  });
+  (children || []).forEach((child) => node.appendChild(child));
+  return node;
+}
+
+function renderStrategyParams(strategyName, currentParams) {
+  const container = document.getElementById("strategy-params");
+  container.innerHTML = "";
+  const strategy = META.strategies[strategyName];
+  if (!strategy) return;
+
+  const grid = el("div", { class: "grid" });
+  Object.entries(strategy.params).forEach(([key, meta]) => {
+    const value = currentParams && key in currentParams ? currentParams[key] : meta.default;
+    const field = el("div", { class: "field" });
+    field.appendChild(el("label", { for: `param_${key}`, text: meta.label || key }));
+
+    let input;
+    if (meta.type === "select") {
+      input = el("select", { id: `param_${key}`, "data-param": key });
+      meta.options.forEach((opt) => {
+        const option = el("option", { value: opt, text: opt });
+        if (opt === value) option.setAttribute("selected", "selected");
+        input.appendChild(option);
+      });
+    } else {
+      input = el("input", {
+        id: `param_${key}`,
+        "data-param": key,
+        type: "number",
+        step: meta.type === "float" ? "any" : "1",
+        value: value,
+      });
+      if (meta.min !== undefined) input.setAttribute("min", meta.min);
+      if (meta.max !== undefined) input.setAttribute("max", meta.max);
+    }
+    field.appendChild(input);
+    grid.appendChild(field);
+  });
+  container.appendChild(grid);
+}
+
+function collectStrategyParams() {
+  const params = {};
+  document.querySelectorAll("#strategy-params [data-param]").forEach((input) => {
+    const key = input.dataset.param;
+    params[key] = input.tagName === "SELECT" ? input.value : Number(input.value);
+  });
+  return params;
+}
+
+function updateSwapVisibility() {
+  const isSwap = document.getElementById("market_type").value === "swap";
+  document.getElementById("swap-fields").classList.toggle("active", isSwap);
+}
+
+async function init() {
+  const [meta, settings] = await Promise.all([
+    fetch("/api/meta").then((r) => r.json()),
+    fetch("/api/settings").then((r) => r.json()),
+  ]);
+  META = meta;
+
+  const exchangeSelect = document.getElementById("exchange");
+  meta.exchanges.forEach((id) => exchangeSelect.appendChild(el("option", { value: id, text: id })));
+
+  const llmSelect = document.getElementById("llm_provider");
+  meta.llm_providers.forEach((id) => llmSelect.appendChild(el("option", { value: id, text: id })));
+
+  const strategySelect = document.getElementById("strategy_name");
+  Object.entries(meta.strategies).forEach(([name, info]) => {
+    strategySelect.appendChild(el("option", { value: name, text: info.label }));
+  });
+
+  // populate form from current settings
+  Object.entries(settings).forEach(([key, value]) => {
+    const input = document.getElementById(key);
+    if (!input) return;
+    if (input.type === "checkbox") input.checked = Boolean(value);
+    else if (key === "extra_symbols") input.value = (value || []).join(", ");
+    else input.value = value;
+  });
+
+  updateSwapVisibility();
+  renderStrategyParams(settings.strategy_name, settings.strategy_params);
+
+  document.getElementById("market_type").addEventListener("change", updateSwapVisibility);
+  document.getElementById("strategy_name").addEventListener("change", (e) => renderStrategyParams(e.target.value, {}));
+
+  document.getElementById("settings-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const status = document.getElementById("status");
+    status.textContent = "Saving...";
+    status.className = "status";
+
+    const payload = {
+      exchange: document.getElementById("exchange").value,
+      exchange_api_key: document.getElementById("exchange_api_key").value,
+      exchange_api_secret: document.getElementById("exchange_api_secret").value,
+      exchange_api_password: document.getElementById("exchange_api_password").value,
+      market_type: document.getElementById("market_type").value,
+      leverage: Number(document.getElementById("leverage").value),
+      margin_mode: document.getElementById("margin_mode").value,
+      quote_currency: document.getElementById("quote_currency").value,
+      top_n: Number(document.getElementById("top_n").value),
+      extra_symbols: document.getElementById("extra_symbols").value
+        .split(",").map((s) => s.trim()).filter(Boolean),
+      timeframe: document.getElementById("timeframe").value,
+      poll_interval_seconds: Number(document.getElementById("poll_interval_seconds").value),
+      order_amount_quote: Number(document.getElementById("order_amount_quote").value),
+      dry_run: document.getElementById("dry_run").checked,
+      strategy_name: document.getElementById("strategy_name").value,
+      strategy_params: collectStrategyParams(),
+      llm_provider: document.getElementById("llm_provider").value,
+      llm_model: document.getElementById("llm_model").value,
+      llm_api_key: document.getElementById("llm_api_key").value,
+      telegram_bot_token: document.getElementById("telegram_bot_token").value,
+      telegram_chat_id: document.getElementById("telegram_chat_id").value,
+    };
+
+    try {
+      const resp = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || "Save failed");
+      }
+      status.textContent = "Saved. Restart the bot process for changes to take effect.";
+      status.className = "status ok";
+    } catch (err) {
+      status.textContent = err.message;
+      status.className = "status err";
+    }
+  });
+}
+
+init();
+</script>
+</body>
+</html>

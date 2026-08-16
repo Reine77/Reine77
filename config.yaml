@@ -10,11 +10,28 @@ extra_symbols:
   - BTC/USDT
   - ETH/USDT
 
-# Candle timeframe and moving average periods for the crossover.
+# Candle timeframe used to compute the strategy below.
 timeframe: 1h
-fast_ma: 9
-slow_ma: 21
-ma_type: ema # ema or sma
+
+# Which strategy fires signals, and its parameters. Run the web UI
+# (see README) to pick from the available strategies and edit these
+# visually, or edit params by hand — any key not listed uses that
+# strategy's default. See src/strategies/ for the full parameter list
+# of each: ma_crossover, rsi, bollinger_bands, macd, stochastic.
+strategy:
+  name: ma_crossover
+  params:
+    fast_period: 9
+    slow_period: 21
+    ma_type: ema # ema or sma
+
+# Optional: ask an LLM for a second opinion on each signal before you
+# confirm it in Telegram. Leave provider blank to disable. Supported:
+# openai, anthropic, gemini, grok, mistral. The API key lives in .env
+# (LLM_API_KEY), never here.
+llm:
+  provider: ""
+  model: "" # optional override; defaults to a current model for the provider
 
 # How often to re-scan the watchlist.
 poll_interval_seconds: 300

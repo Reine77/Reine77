@@ -1,6 +1,6 @@
 import os
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import Dict, List
 
 import yaml
 from dotenv import load_dotenv
@@ -20,20 +20,25 @@ class Config:
     top_n: int
     extra_symbols: List[str]
     timeframe: str
-    fast_ma: int
-    slow_ma: int
-    ma_type: str
     poll_interval_seconds: int
     order_amount_quote: float
     dry_run: bool
     market_type: str
     leverage: float
     margin_mode: str
+    strategy_name: str
+    strategy_params: Dict = field(default_factory=dict)
+    llm_provider: str = ""
+    llm_model: str = ""
+    llm_api_key: str = ""
 
 
 def load_config(path: str = "config.yaml") -> Config:
     with open(path) as f:
         raw = yaml.safe_load(f)
+
+    strategy = raw.get("strategy", {}) or {}
+    llm = raw.get("llm", {}) or {}
 
     return Config(
         exchange_id=raw["exchange"],
@@ -46,13 +51,15 @@ def load_config(path: str = "config.yaml") -> Config:
         top_n=raw.get("top_n", 10),
         extra_symbols=raw.get("extra_symbols", []),
         timeframe=raw.get("timeframe", "1h"),
-        fast_ma=raw.get("fast_ma", 9),
-        slow_ma=raw.get("slow_ma", 21),
-        ma_type=raw.get("ma_type", "ema"),
         poll_interval_seconds=raw.get("poll_interval_seconds", 300),
         order_amount_quote=raw.get("order_amount_quote", 50),
         dry_run=raw.get("dry_run", True),
         market_type=raw.get("market_type", "spot"),
         leverage=raw.get("leverage", 2),
         margin_mode=raw.get("margin_mode", "isolated"),
+        strategy_name=strategy.get("name", "ma_crossover"),
+        strategy_params=strategy.get("params", {}),
+        llm_provider=llm.get("provider", ""),
+        llm_model=llm.get("model", ""),
+        llm_api_key=os.environ.get("LLM_API_KEY", ""),
     )
