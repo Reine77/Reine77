@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mecha Survivor POC</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html, body { margin: 0; padding: 0; background: #0a0b0d; height: 100%; overflow: hidden; }
+  #game-root { display: flex; align-items: center; justify-content: center; width: 100vw; height: 100vh; }
+  canvas { image-rendering: pixelated; }
+  #help {
+    position: fixed; left: 12px; bottom: 12px; color: #7c8896; font: 12px monospace;
+    background: rgba(0,0,0,0.4); padding: 6px 10px; border-radius: 4px; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="game-root"></div>
+<div id="help">WASD / Arrows: move &nbsp;&middot;&nbsp; Weapon auto-fires at nearest enemy &nbsp;&middot;&nbsp; Walk over chests &amp; gems</div>
+
+<script src="vendor/phaser.min.js"></script>
+
+<script src="src/config/balance.js"></script>
+<script src="src/entities/Player.js"></script>
+<script src="src/entities/Enemy.js"></script>
+<script src="src/systems/WaveManager.js"></script>
+<script src="src/systems/UpgradeSystem.js"></script>
+<script src="src/scenes/BootScene.js"></script>
+<script src="src/scenes/GameScene.js"></script>
+
+<script>
+  const config = {
+    type: Phaser.AUTO,
+    parent: 'game-root',
+    width: 1152,
+    height: 648,
+    backgroundColor: '#0a0b0d',
+    pixelArt: false,
+    physics: {
+      default: 'arcade',
+      arcade: { gravity: { x: 0, y: 0 }, debug: false },
+    },
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
+    scene: [BootScene, GameScene],
+  };
+
+  new Phaser.Game(config);
+</script>
+</body>
+</html>
