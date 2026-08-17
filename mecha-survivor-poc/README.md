@@ -13,7 +13,14 @@ real (e.g. AI-generated) sprites later. See `assets/README.md`.
 ## Run it
 
 Browsers block loading local image files over `file://`, so serve the
-folder instead of double-clicking `index.html`:
+folder instead of double-clicking `index.html`.
+
+**Windows:** double-click `play.bat` in this folder. It starts a local
+server (using Python or Node, whichever it finds) and opens the game in
+your browser automatically. Close the extra "Mecha Survivor Server" window
+when you're done playing.
+
+**Mac/Linux, or manually:**
 
 ```bash
 cd mecha-survivor-poc
