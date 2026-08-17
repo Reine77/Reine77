@@ -7,6 +7,19 @@ class Player {
     this.sprite.body.setSize(56, 70).setOffset(36, 46);
     this.sprite.owner = this;
 
+    // player_mecha spritesheet: frames 0-18 are the fire/muzzle-flash/smoke
+    // sequence, 19-24 are the calm idle pose. Anim keys are global to the
+    // scene's AnimationManager, so guard against re-registering them on
+    // scene restart (a fresh Player is constructed each time).
+    if (!scene.anims.exists('player_idle')) {
+      scene.anims.create({ key: 'player_idle', frames: scene.anims.generateFrameNumbers('player_mecha', { start: 19, end: 24 }), frameRate: 6, repeat: -1 });
+      scene.anims.create({ key: 'player_fire', frames: scene.anims.generateFrameNumbers('player_mecha', { start: 0, end: 18 }), frameRate: 40, repeat: 0 });
+    }
+    this.sprite.play('player_idle');
+    this.sprite.on('animationcomplete', (anim) => {
+      if (anim.key === 'player_fire') this.sprite.play('player_idle');
+    });
+
     this.stats = {
       maxHp: BALANCE.player.startHp,
       speedMult: 1,
@@ -83,6 +96,7 @@ class Player {
     const target = this.findNearestEnemy(enemies);
     if (!target) return;
     this.lastShotAt = time;
+    this.sprite.play('player_fire');
 
     const baseAngle = Phaser.Math.Angle.Between(this.sprite.x, this.sprite.y, target.x, target.y);
     const count = this.stats.projectileCount;

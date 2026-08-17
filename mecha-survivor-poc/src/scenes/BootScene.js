@@ -12,7 +12,9 @@ class BootScene extends Phaser.Scene {
     this.load.on('complete', () => { box.destroy(); bar.destroy(); label.destroy(); });
 
     const s = 'assets/sprites/';
-    this.load.image('player_mecha', s + 'player_mecha.png');
+    // player_mecha is a 5x5 grid of 128x128 frames: 0-18 is the fire/muzzle-
+    // flash-and-smoke sequence, 19-24 is the calm idle pose. See Player.js.
+    this.load.spritesheet('player_mecha', s + 'player_mecha.png', { frameWidth: 128, frameHeight: 128 });
     this.load.image('enemy_mutant_crawler', s + 'enemy_mutant_crawler.png');
     this.load.image('enemy_scavenger', s + 'enemy_scavenger.png');
     this.load.image('boss_rogue_robot', s + 'boss_rogue_robot.png');
