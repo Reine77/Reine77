@@ -146,7 +146,17 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
   border-radius: 3px;
   padding: .05rem .4rem;
   margin-bottom: .3rem;
+  /* Default hidden via VISIBILITY, not the `hidden` attribute:
+     visibility:hidden keeps the element's box in the layout (so the
+     row height stays reserved), while `hidden`/display:none would
+     collapse it to zero height and shift everything below it. This
+     is what keeps the hero and enemy panels row-for-row aligned
+     regardless of whether the current enemy is a boss. render.js
+     flips this to `visible` for #enemyBoss when enemy.isBoss is
+     true; the hero's copy (.placeholder) never changes. */
+  visibility: hidden;
 }
+#enemyBoss.visible { visibility: visible; }
 
 .hpbar {
   position: relative;
@@ -182,6 +192,14 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
   font-size: .75rem;
   color: var(--text-dim);
   text-align: center;
+  /* Pinned, not just "usually two lines": the hero's substats show
+     5 stats across 2 lines, the enemy's show 2 stats on 1 line —
+     that content difference is permanent, not a bug, so matching
+     row heights can't rely on matching line counts. A fixed
+     min-height is what actually guarantees the hero and enemy
+     panels stay row-aligned regardless of how much either side's
+     stat line grows or shrinks later. */
+  min-height: 34px;
 }
 
 #vsBadge {

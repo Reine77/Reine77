@@ -48,10 +48,11 @@
       heroHpFill:  document.getElementById('heroHpFill'),
       heroHpText:  document.getElementById('heroHpText'),
 
-      enemyName:   document.getElementById('enemyName'),
-      enemyBoss:   document.getElementById('enemyBoss'),
-      enemyHpFill: document.getElementById('enemyHpFill'),
-      enemyHpText: document.getElementById('enemyHpText'),
+      enemyName:     document.getElementById('enemyName'),
+      enemyBoss:     document.getElementById('enemyBoss'),
+      enemyHpFill:   document.getElementById('enemyHpFill'),
+      enemyHpText:   document.getElementById('enemyHpText'),
+      enemySubstats: document.getElementById('enemySubstats'),
 
       statDamage:  document.getElementById('statDamage'),
       statSpeed:   document.getElementById('statSpeed'),
@@ -188,18 +189,27 @@
       el.heroHpText.textContent = Math.max(0, Math.round(hero.hp)) + ' / ' + Math.round(s.maxHp);
 
       // ---- enemy panel ----
+      // Note: the boss badge toggles via a CSS CLASS (.visible),
+      // not the `hidden` attribute — see style.css's comment. Using
+      // `hidden` here would collapse the badge's row to zero height
+      // whenever the enemy isn't a boss (i.e. almost always), which
+      // is exactly the misalignment this whole structure exists to
+      // prevent.
       var enemy = state.enemy;
       if (enemy) {
         el.enemyName.textContent = enemy.name;
-        el.enemyBoss.hidden = !enemy.isBoss;
+        el.enemyBoss.classList.toggle('visible', enemy.isBoss);
         var enemyHpPct = Math.max(0, Math.min(100, (enemy.hp / enemy.maxHp) * 100));
         el.enemyHpFill.style.width = enemyHpPct + '%';
         el.enemyHpText.textContent = Math.max(0, Math.round(enemy.hp)) + ' / ' + enemy.maxHp;
+        el.enemySubstats.textContent = 'dmg ' + enemy.damage.toFixed(1) +
+          ' · spd ' + enemy.attackSpeed.toFixed(2) + '/s';
       } else {
         el.enemyName.textContent = state.phase === 'retreating' ? 'Retreating…' : '…';
-        el.enemyBoss.hidden = true;
+        el.enemyBoss.classList.remove('visible');
         el.enemyHpFill.style.width = '0%';
         el.enemyHpText.textContent = '';
+        el.enemySubstats.textContent = '';
       }
 
       // ---- hero stats ----

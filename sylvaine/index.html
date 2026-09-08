@@ -29,8 +29,27 @@
          Static placeholders for now; Phase 5 swaps these for real
          sprites (idle/attack/hurt/spell states + the sword trail). -->
     <section id="arena">
+      <!--
+        Both panels below share the EXACT same row order — portrait,
+        badge slot, name, hp bar, substats — on purpose. That's what
+        keeps the sprite and HP bar "parallel" between hero and
+        enemy: with justify-content:flex-end, a flex column anchors
+        to its OWN bottom, so two columns with different content
+        (e.g. one has a stats line, the other doesn't) end up
+        starting at different heights even though they look like
+        they should match. Matching row order + row content on both
+        sides is what makes the bottom-anchor produce identical
+        positions instead of relying on it by luck.
+      -->
       <div class="combatant hero">
         <div class="portrait-placeholder">Sylvaine<br>(sprite: Phase 5)</div>
+        <!-- Sylvaine never gets a boss badge — this reserves the
+             exact same row height as the enemy's badge slot below,
+             via visibility (which still takes up space) rather than
+             hidden (which collapses to zero height). Without this,
+             her panel would shift up/down every time the enemy
+             switches between a normal stage and a boss stage. -->
+        <span class="boss-badge placeholder">BOSS</span>
         <div class="name">Sylvaine</div>
         <div class="hpbar">
           <div class="hpbar-fill" id="heroHpFill"></div>
@@ -49,12 +68,13 @@
 
       <div class="combatant enemy">
         <div class="portrait-placeholder">Enemy<br>(sprite: Phase 5)</div>
-        <span class="boss-badge" id="enemyBoss" hidden>BOSS</span>
+        <span class="boss-badge" id="enemyBoss">BOSS</span>
         <div class="name" id="enemyName">…</div>
         <div class="hpbar">
           <div class="hpbar-fill" id="enemyHpFill"></div>
           <span class="hpbar-text" id="enemyHpText"></span>
         </div>
+        <div class="substats" id="enemySubstats"></div>
       </div>
     </section>
 
