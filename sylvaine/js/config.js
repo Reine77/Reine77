@@ -63,8 +63,24 @@
        exponential enemy HP produces walls, and walls are what
        make spending gold on runes feel necessary.             */
     enemy: {
-      hp:          { base: 40, growth: 1.13 },
-      damage:      { base: 4,  growth: 1.11 },
+      // hp.base was 40 — a normal fight ended in 2-4s and the
+      // first boss arrived 34 SECONDS into the game. Too fast for
+      // an idle game; the first boss should be minutes away.
+      //
+      // IMPORTANT: hp.base alone controls PACING (how long a fight
+      // takes in real seconds). damage.base controls DIFFICULTY
+      // (how much of her HP a fight costs). They have to move
+      // together: stretching a fight from 3s to 12s without
+      // touching damage means she eats ~4x as many hits per kill
+      // for the same 20% heal-on-kill, which isn't "slower" —
+      // it's "harder", and that's not what we're changing here.
+      //
+      // So hp.base is up ~3.75x (stretches fight length) and
+      // damage.base is down by the same ~3.75x (keeps damage taken
+      // per kill, and therefore the attrition curve, unchanged).
+      // Net effect: fights take longer, difficulty is unchanged.
+      hp:          { base: 150,  growth: 1.13 },
+      damage:      { base: 1.1,  growth: 1.11 },
       attackSpeed: 0.7,
       xp:          { base: 12, growth: 1.12 },
       gold:        { base: 8,  growth: 1.12 }
@@ -92,7 +108,11 @@
 
       // Safety net. If a fight somehow runs this long, treat it
       // as unwinnable rather than looping forever.
-      stallTimeout: 60,
+      // Was 60s, sized for the old ~4x-faster pacing. A winnable
+      // boss fight can now legitimately run 60-90s+, so this has
+      // to be comfortably above real fight lengths or it fires on
+      // fights she was actually going to win.
+      stallTimeout: 240,
 
       // Boss winnability margin. She needs to kill the boss in
       // at most this fraction of the time it takes the boss to

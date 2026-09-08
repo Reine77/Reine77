@@ -94,10 +94,21 @@ reason the numbers are checkable before anything is rendered.
 
 ## Known balance state (expected, not a bug)
 
-A one-hour run with seed 12345 reaches roughly **stage 28, level 31, ~43k gold,
-with ~117 retreats**. That is a lot of thrashing — she clears a stage, dies on
-the next, farms, comes back. It happens because Phase 1 has only *one* of the
-three power sources implemented:
+Pacing was retuned after first review: the original numbers put the first
+boss 34 *seconds* into the game, which reads more like a speedrun than an
+idle game. `enemy.hp.base` went from 40 to 150 to stretch fight length, with
+`enemy.damage.base` scaled down by the same ~3.75x factor to hold the
+attrition curve steady — HP alone controls pacing, damage alone controls
+difficulty, and they have to move together or "slower" quietly becomes
+"harder" instead. `combat.stallTimeout` also had to move with it (60s to
+240s): a legitimately winnable boss fight can now take 60-90s, which used to
+trip the stall-safety net meant for stuck fights.
+
+With the current numbers, seed 12345 reaches the first boss at ~2 minutes
+(rejected, not ready), farms up, and beats it around the 5-minute mark. A
+30-minute run reaches roughly stage 19, level 17, ~3k gold. Gold is still
+piling up largely unspent because Phase 1 has only *one* of the three power
+sources implemented:
 
 1. **Levels** (XP) — implemented, deliberately slow.
 2. **Runes** (gold) — Phase 3. This is why ~43k gold is piling up unspent.
