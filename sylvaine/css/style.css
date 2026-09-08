@@ -271,13 +271,33 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 /* ---- rune buy list -------------------------------------------
    Deliberately basic — the real clickable tree is Phase 6. This
    is a flat list of buttons so runes don't require the console. */
+/* #runeList is the grid — NOT each row. This matters: a plain
+   `display:grid` on each `.rune-row` individually would only align
+   columns WITHIN that one row, because each row would compute its
+   own column widths from only its own content (branch/cost/status/
+   button natural sizes for THAT row alone). Since `.rune-status`'s
+   text length varies hugely row to row ("not enough gold (need
+   150, have 17)" vs "missing prerequisite(s): blade_2, arcane_2"),
+   each row would still size its own name/cost columns differently
+   — which is exactly what was happening with flexbox, and grid
+   alone doesn't fix it without one more step.
+
+   That step is `subgrid`: #runeList defines the ONE set of column
+   tracks, and each `.rune-row` — despite being a separate element —
+   inherits those exact tracks instead of computing its own. Now the
+   cost column's width is the max across ALL 10 rows' cost cells,
+   shared identically by every row, so gold amounts land at the same
+   X position everywhere regardless of how long any single row's
+   status text is. */
 #runeList {
-  display: flex;
-  flex-direction: column;
-  gap: .35rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  row-gap: .35rem;
 }
 .rune-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   align-items: center;
   gap: .6rem;
   padding: .35rem .5rem;
@@ -298,8 +318,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 .rune-row.branch-arcane .rune-branch { color: #7ab0d9; border-color: #2f4f66; }
 .rune-row.branch-hybrid .rune-branch { color: var(--gold); border-color: #6b5c2a; }
 
-.rune-row .rune-name { flex: 1; }
-.rune-row .rune-cost { color: var(--gold); min-width: 4.5em; text-align: right; }
+.rune-row .rune-cost { color: var(--gold); min-width: 4.5em; text-align: left; }
 .rune-row .rune-status { color: var(--text-dim); font-size: .7rem; min-width: 9em; }
 .rune-row.owned { opacity: .55; }
 .rune-row button {
