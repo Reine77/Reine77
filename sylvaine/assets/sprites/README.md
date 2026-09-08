@@ -19,15 +19,47 @@ image files in it, so right now everything is still showing placeholders.
 | `sylvaine_spell.png` | casting | rune above the palm |
 | `sword_trail.png` | attack overlay | separate transparent layer, absolutely positioned, fades in/out with the attack |
 
-## Enemies — one static image each
+## Enemies — 20 base types, one static image each
 
-`goblin.png`, `warhound.png`, `orc.png`, `shaman.png`, `troll.png`, `ogre.png`
+20 distinct sprites now, not 6 — this roster is meant to actually feel
+different as you climb, not just get shinier. Grouped below by roughly
+where each one starts appearing (see `minStage` per variant in
+`js/enemies.js` for the exact numbers); draw them in whatever order you
+like, the game degrades gracefully either way (see this folder's note
+at the top).
 
-Higher tiers are NOT new files. They reuse these via the CSS colour
-treatments in `js/enemies.js` (`treatments`), so a new tier is one line of
-data and zero new art.
+**Early grunts (stage ~1-30):**
+`goblin.png`, `warhound.png`, `orc.png`
 
-All enemy visual feedback is CSS, never a second sprite:
+**Mid-early — grunts start banding together (stage ~15-55):**
+`goblin_horde.png` (Goblin Horde — one picture, a cluster of goblins, not
+literally multiple combatants), `warhound_pack.png` (War-Hound Pack, same
+idea), `shaman.png` (Horde Shaman), `orc_brute.png` (Orc Brute — bigger,
+meaner orc), `dire_wolf.png` (Dire Wolf — fast beast, distinct from the
+War-Hound)
+
+**Mid — the heavy hitters proper (stage ~12-60):**
+`troll.png`, `ogre.png`, `harpy.png` (flying scout-type)
+
+**Mid-late — named leaders and casters (stage ~40-105):**
+`troll_totem.png` (Troll Totem-Master), `dark_acolyte.png` (Dark Acolyte —
+human caster; ties into the "someone opened the gate" betrayal thread from
+the story if you want to lean into that visually), `ogre_bandmaster.png`
+(Ogre Bandmaster), `black_knight.png` (Black Knight — corrupted/armored
+human)
+
+**Late — rare, dangerous, endless-tail uniques (stage ~65+, no upper limit):**
+`wraith.png`, `stone_golem.png`, `ettin.png` (Two-Headed Ettin), `cyclops.png`,
+`wyvern.png`
+
+Every one of the original 6 grunt types ALSO gets palette-swap tiers (the
+existing bloodfang/frost/elite/voidtouch CSS hue-rotates) layered on top of
+its single sprite — that system is unchanged and still free variety, it's
+just no longer the ONLY source of variety. The 14 new types are plain-only
+for now; adding palette tiers to any of them later is one data line in
+`js/enemies.js`, same as before, zero new art required if you don't want to.
+
+All enemy visual feedback is CSS, never a second sprite per type:
 hit = `filter: brightness(3)` for ~80ms, death = fade + slight scale-down +
 downward drift, attack tell = `translateX(-8px)`.
 

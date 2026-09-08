@@ -106,8 +106,11 @@ reason the numbers are checkable before anything is rendered.
 - The retreat gate works: an unwinnable boss sends her back to farm the last
   cleared normal stage, and each farm kill re-tests whether the blocked stage is
   now possible. There is no game-over and no permadeath.
-- Enemy data is 6 base sprites driving 20 variants via palette treatments, plus
-  4 boss sprites cycled with treatments for the endless tail.
+- Enemy data started as 6 base sprites driving 20 variants via palette
+  treatments; grew to 20 base types (grunts through named endgame uniques —
+  see `assets/sprites/README.md`) after the initial art review, with the
+  original 6 keeping their palette-swap tiers on top. Plus 4 boss sprites
+  cycled with treatments for the endless tail.
 
 ## What Phase 2 added
 

@@ -90,17 +90,26 @@ console.log('\nPhase 1 checks\n');
   check('boss carries its own sprite', /^boss_/.test(boss.art.sprite), boss.art.sprite);
 }
 
-/* --- 6. enemy variants reuse base sprites ---------------- */
+/* --- 6. enemy roster: 20 distinct base types, still reused --- */
 {
-  const sprites = new Set(Object.values(Enemies.baseTypes).map(b => b.sprite));
+  const baseNames = Object.keys(Enemies.baseTypes);
+  const sprites = Object.values(Enemies.baseTypes).map(b => b.sprite);
+  const uniqueSprites = new Set(sprites);
   let ok = true;
   for (const v of Enemies.variants) {
     if (!Enemies.baseTypes[v.base]) ok = false;
     if (!Enemies.treatments[v.treatment]) ok = false;
   }
   check('every variant points at a real base type and treatment', ok);
-  check('base sprite count is small (' + sprites.size + ' files for ' +
-    Enemies.variants.length + ' variants)', sprites.size <= 6);
+
+  check('the roster has exactly 20 base types (grunts through named uniques)',
+    baseNames.length === 20, String(baseNames.length));
+  check('no two base types share a sprite filename',
+    uniqueSprites.size === sprites.length,
+    uniqueSprites.size + ' unique out of ' + sprites.length);
+  check('palette-swap treatments still multiply variants beyond one-per-type ' +
+    '(' + Enemies.variants.length + ' variants from ' + baseNames.length + ' base types)',
+    Enemies.variants.length > baseNames.length);
 }
 
 /* --- 7. the retreat gate must break unwinnable loops ------ */
