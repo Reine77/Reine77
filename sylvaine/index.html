@@ -25,9 +25,7 @@
       </div>
     </div>
 
-    <!-- The VS arena — hero left / enemy right, split-screen frame.
-         Static placeholders for now; Phase 5 swaps these for real
-         sprites (idle/attack/hurt/spell states + the sword trail). -->
+    <!-- The VS arena — hero left / enemy right, split-screen frame. -->
     <section id="arena">
       <!--
         Both panels below share the EXACT same row order — portrait,
@@ -40,9 +38,23 @@
         they should match. Matching row order + row content on both
         sides is what makes the bottom-anchor produce identical
         positions instead of relying on it by luck.
+
+        SPRITES (Phase 5): each portrait box now holds real <img>
+        layers, but degrades gracefully to the old placeholder text
+        if a file 404s — render.js listens for the image's `error`
+        event and reveals `.portrait-fallback` instead of leaving a
+        broken-image icon. That's deliberate: this project's own art
+        gets added to assets/sprites/ over time by hand (see that
+        folder's README for the exact filenames expected), so most
+        of the roster genuinely won't have a file yet for a while,
+        and the game needs to look intentional either way, not broken.
       -->
       <div class="combatant hero">
-        <div class="portrait-placeholder">Sylvaine<br>(sprite: Phase 5)</div>
+        <div class="portrait-placeholder hero-portrait" id="heroPortrait">
+          <img class="sword-trail" id="swordTrail" src="assets/sprites/sword_trail.png" alt="">
+          <img class="hero-sprite" id="heroSprite" src="assets/sprites/sylvaine_idle.png" alt="Sylvaine">
+          <span class="portrait-fallback">Sylvaine<br>(sprite: Phase 5)</span>
+        </div>
         <!-- Sylvaine never gets a boss badge — this reserves the
              exact same row height as the enemy's badge slot below,
              via visibility (which still takes up space) rather than
@@ -67,7 +79,10 @@
       <div id="vsBadge">VS</div>
 
       <div class="combatant enemy">
-        <div class="portrait-placeholder">Enemy<br>(sprite: Phase 5)</div>
+        <div class="portrait-placeholder enemy-portrait" id="enemyPortrait">
+          <img class="enemy-sprite" id="enemySprite" alt="">
+          <span class="portrait-fallback">Enemy<br>(sprite: Phase 5)</span>
+        </div>
         <span class="boss-badge" id="enemyBoss">BOSS</span>
         <div class="name" id="enemyName">…</div>
         <div class="hpbar">

@@ -1,7 +1,13 @@
 # Sprite assets
 
-Filenames are referenced by `js/enemies.js` (enemies) and Phase 5 (hero), so
-they must match exactly, lowercase.
+Filenames are referenced by `js/enemies.js` (enemies) and `js/render.js`
+(hero), so they must match exactly, lowercase.
+
+**Phase 5's wiring is live** — drop a file in here with the exact name below
+and it appears in-game on your next page load, no code changes needed. Until
+a file exists, that slot just shows the old placeholder box/text instead of
+a broken image; nothing breaks either way. This folder currently has no
+image files in it, so right now everything is still showing placeholders.
 
 ## Hero — one static image per state, no frame animation
 

@@ -2,13 +2,14 @@
 
 Vanilla HTML/CSS/JS. No frameworks, no build step, no dependencies.
 
-## Phase 4 (current) — minimal DOM UI
+## Phase 5 (current) — sprite integration
 
-**In the browser:** open `sylvaine/index.html` directly. There's a real screen now —
-a VS-style split arena (hero left, enemy right), stat panel, XP/gold/stage
-counters, a basic rune-buy list, and the combat log rendered as a panel
-instead of only the console. The console (F12) still works exactly as
-before — every `S.*` debug command is still there.
+**In the browser:** open `sylvaine/index.html` directly. Same VS-style split
+arena as Phase 4, now with real `<img>` sprite layers wired up for the hero's
+4 states and every enemy — see `assets/sprites/README.md` for exact filenames
+if you're dropping art in. No file there yet? Everything still shows the
+Phase 4 placeholder boxes/text, cleanly, not a broken-image icon. The console
+(F12) still works exactly as before — every `S.*` debug command is still there.
 
 Debug commands available on `window.S`:
 
@@ -57,7 +58,9 @@ js/runes.js         rune tree data, purchase validation, spell-unlock gate
 js/enemies.js       roster, palette-swap variants, stage curve
 js/game.js          all the rules; step(state, dt) is the only entry point
 js/loop.js          requestAnimationFrame + the dt clamp
-js/render.js        reads state, writes DOM — never the reverse
+js/render.js        reads state, writes DOM — never the reverse. Also
+                    the Phase 5 sprite state machine (hero) and
+                    sprite/filter/effects wiring (enemies)
 js/main.js          browser entry point and the S.* debug API
 tools/simulate.mjs  headless runner
 tools/checks.mjs    sanity assertions
@@ -231,13 +234,54 @@ other two channels; the numbers here are a baseline, not a final balance.
   duplicating it (a real bug caught in testing — `buildRuneList()` wasn't
   clearing old rows before appending new ones).
 
+## What Phase 5 added
+
+- **The hero is a state machine over 4 fixed images**, driven entirely by
+  `game.js`'s own events (`heroAttack`, `heroSpell`, `heroDamaged`,
+  `retreat`) — planted back in Phase 1 specifically so a later phase could
+  hook them without touching combat code, and this is the phase that finally
+  used them. Swap the sprite, start a ~200ms revert timer back to idle; a
+  newer event always cancels a pending revert rather than racing it.
+- **Enemies are one static file per current enemy**, chosen once on the
+  `spawn` event — not every frame, since the enemy doesn't change sprite
+  between spawns. Higher tiers are the exact same file with a CSS
+  `hue-rotate` filter applied via inline style, reading the `filter` field
+  `enemies.js` already carried since Phase 1's roster design. Hit, death,
+  and the attack-tell lunge are all CSS on that one image — never a second
+  sprite, exactly per spec. The hit-flash combines the tier's hue-rotate
+  with a `brightness(3)` spike in one `filter` value rather than fighting
+  over which one wins — see `render.js`'s comment on why that has to be
+  done manually instead of with a CSS `@keyframes` animation (an animated
+  `filter` property would silently blow away the tier's inline hue-rotate
+  while it plays).
+- **Graceful degradation, not a broken-image icon.** Most of the roster
+  won't have real art for a while — this project's sprites get added by
+  hand over time (see `assets/sprites/README.md`). Every sprite `<img>`
+  defaults to invisible and only gets revealed on a real `load` event; an
+  `error` event (file doesn't exist yet) reveals the pre-Phase-5 placeholder
+  box/text instead. The whole animation system runs identically either way —
+  it just has nothing to visually swap between until a file exists.
+- Portrait boxes grew from 96×96 (icon-sized) to 150×190, since the actual
+  hero reference art is a tall ~3:4 portrait, not a square icon; `#arena`'s
+  min-height grew to match.
+- Verified in headless Chromium, not just read by eye: forced `heroAttack`
+  through the real event system and confirmed the `<img src>` actually
+  swapped to `sylvaine_attack.png` and reverted to `sylvaine_idle.png` after
+  the timeout; forced a mock enemy through `spawn`/`enemyDamaged`/
+  `heroDamaged`/`enemyKilled` and confirmed the filter/scale/lunge/dying
+  classes all land exactly as designed; re-measured the hero/enemy panel
+  alignment from Phase 4 to confirm the larger portraits didn't reopen that
+  bug (still ~2px, unchanged).
+
 ## Phase plan
 
 - [x] **1** Game logic, console only
 - [x] **2** Items, `computeStats` aggregation, drop table, auto-equip/auto-sell
 - [x] **3** Rune tree data, purchase validation, spell-unlock gate
 - [x] **4** Minimal DOM UI
-- [ ] **5** Sprites: hero state swaps, sword trail, enemy hit-flash/death CSS
+- [x] **5** Sprites: hero state swaps, sword trail, enemy hit-flash/death CSS
+      (system is fully wired and tested; visual result depends on real PNGs
+      landing in `assets/sprites/` — see that folder's README)
 - [ ] **6** Rune tree UI (the real clickable tree; Phase 4's list is a stand-in)
 - [ ] **7** Juice: floating numbers, HP bar lerp, crit flash, drop toasts
 - [ ] **8** Save/load + offline progress from a stored timestamp

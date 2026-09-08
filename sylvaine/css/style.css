@@ -88,7 +88,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 #arena {
   position: relative;
   display: flex;
-  min-height: 260px;
+  min-height: 380px; /* was 260px — the Phase 5 portrait box alone is 190px tall */
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
@@ -115,8 +115,13 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 }
 
 .portrait-placeholder {
-  width: 96px;
-  height: 96px;
+  /* Sized for real art, not the old icon-sized 96x96 box — the
+     hero reference art is a tall ~3:4 portrait, not a square icon.
+     `position: relative` makes this the positioning context for
+     the sprite/trail/fallback layers stacked inside it below. */
+  position: relative;
+  width: 150px;
+  height: 190px;
   border-radius: 8px;
   border: 2px dashed var(--border);
   margin-bottom: .75rem;
@@ -126,9 +131,90 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
   color: var(--text-dim);
   font-size: .7rem;
   text-align: center;
+  overflow: hidden;
 }
 .combatant.hero .portrait-placeholder { border-color: var(--hero-dim); }
 .combatant.enemy .portrait-placeholder { border-color: var(--enemy-dim); }
+
+/* Once a real sprite has loaded, the dashed "placeholder" framing
+   stops making sense — render.js adds this class on the image's
+   `load` event so the box reads as art, not as an empty slot. */
+.portrait-placeholder.has-sprite {
+  border-style: solid;
+  border-color: var(--border);
+}
+
+/* ---- sprite layers --------------------------------------------
+   Stacked absolutely inside the (now positioned) portrait box:
+   sword trail furthest back, sprite on top, text fallback on top
+   of both but only visible when there's no sprite to show. */
+.sword-trail,
+.hero-sprite,
+.enemy-sprite {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* An <img> with a missing/failed src still occupies its box and
+     paints a browser-default broken-image icon unless we hide it.
+     Default to invisible; render.js reveals it with `.loaded` only
+     once the file has actually loaded successfully. */
+  opacity: 0;
+}
+.sword-trail.loaded,
+.hero-sprite.loaded,
+.enemy-sprite.loaded {
+  opacity: 1;
+}
+
+.sword-trail {
+  z-index: 1;
+  opacity: 0; /* independent of .loaded — see render.js's flashSwordTrail */
+  transition: opacity 180ms ease-out;
+}
+.hero-sprite { z-index: 2; }
+.enemy-sprite {
+  z-index: 2;
+  /* Palette-swap tiers (js/enemies.js's `treatments`) apply a CSS
+     hue-rotate here via inline style — see render.js. This
+     transition is what makes the hit-flash brightness spike (also
+     inline style, layered onto the same filter) look like a flash
+     instead of an instant snap. */
+  transition: filter 60ms ease-out;
+}
+
+.portrait-fallback {
+  position: relative;
+  z-index: 3;
+}
+/* Hidden the instant a real sprite is showing (whichever one that
+   is — hero or enemy — the selector covers both via the shared
+   `.loaded` class rather than needing a hero/enemy-specific rule). */
+.portrait-placeholder.has-sprite .portrait-fallback {
+  display: none;
+}
+
+/* ---- attack-tell lunge & retreat dim ----------------------------
+   A quick, generic transform pulse — reused for the enemy's attack
+   tell (translateX toward the hero) exactly as the spec's CSS-only
+   enemy feedback describes. Applied to the whole portrait box via
+   a class render.js toggles briefly, not baked into the sprite
+   image itself, so it costs zero extra art. */
+.portrait-placeholder {
+  transition: transform 90ms ease-out, filter 250ms ease-out;
+}
+.portrait-placeholder.lunge { transform: translateX(-8px); }
+.portrait-placeholder.dimmed { filter: brightness(.4) saturate(.5); }
+
+/* ---- enemy death: fade + scale-down + drift ---------------------
+   CSS-only, reused across every enemy type per the spec — there is
+   no separate "death sprite" for any enemy, ever. */
+.portrait-placeholder.dying {
+  transition: opacity 340ms ease-in, transform 340ms ease-in;
+  opacity: 0;
+  transform: translateY(14px) scale(.82);
+}
 
 .combatant .name {
   font-size: 1.05rem;

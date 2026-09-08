@@ -25,16 +25,60 @@
      — reserved layout, no data behind them. They're not part of
      the current spec; see the README's roadmap for where they're
      planned as their own future phases.
+
+  SPRITES (Phase 5)
+     Two different mechanisms, because the two kinds of "art" work
+     completely differently:
+
+     - The HERO is a state machine over four fixed files
+       (idle/attack/hurt/spell), driven by game.js's EVENTS
+       (heroAttack, heroSpell, heroDamaged, retreat). Swap the
+       image, start a revert timer back to idle (~200ms per the
+       spec), and a newer event always wins over a pending revert.
+
+     - ENEMIES are one static file per current enemy, chosen once
+       per 'spawn' event (not every frame — the enemy doesn't
+       change sprite between spawns). Higher tiers are the SAME
+       file with a CSS hue-rotate filter applied via inline style
+       (see enemies.js's `treatments`), so 20+ variants reuse 6
+       base images with zero extra art. All enemy feedback (hit,
+       death, attack-tell) is CSS on that one image, never a
+       second sprite — exactly per the spec.
+
+     GRACEFUL DEGRADATION: most of the roster won't have a real
+     PNG for a while (this project's art gets added by hand over
+     time). Every <img> here defaults to invisible and only gets
+     the `.loaded` class on a real `load` event; an `error` event
+     (missing file) reveals the pre-Phase-5 placeholder text
+     instead of a broken-image icon. The whole animation system
+     above still runs identically either way — it just has nothing
+     visible to swap between until a file exists.
    ============================================================= */
 (function (root) {
   'use strict';
 
   var Sylvaine = (root.Sylvaine = root.Sylvaine || {});
 
+  var SPRITE_PATH = 'assets/sprites/';
+
+  // How long a non-idle hero sprite (attack/hurt/spell) holds
+  // before reverting to idle. Matches the spec's "~200ms" pattern.
+  var HERO_STATE_MS = 200;
+  var HIT_FLASH_MS = 80;   // enemy brightness spike duration
+  var LUNGE_MS = 90;       // enemy attack-tell hold time
+
+  var HERO_SPRITES = {
+    idle:   SPRITE_PATH + 'sylvaine_idle.png',
+    attack: SPRITE_PATH + 'sylvaine_attack.png',
+    hurt:   SPRITE_PATH + 'sylvaine_hurt.png',
+    spell:  SPRITE_PATH + 'sylvaine_spell.png'
+  };
+
   function makeRenderer(state) {
     var Stats = Sylvaine.Stats;
     var Runes = Sylvaine.Runes;
     var Items = Sylvaine.Items;
+    var Game  = Sylvaine.Game;
 
     // ---- grab every element we'll touch, once ----
     var el = {
@@ -48,6 +92,12 @@
       heroHpFill:  document.getElementById('heroHpFill'),
       heroHpText:  document.getElementById('heroHpText'),
 
+      heroPortrait: document.getElementById('heroPortrait'),
+      heroSprite:   document.getElementById('heroSprite'),
+      swordTrail:   document.getElementById('swordTrail'),
+
+      enemyPortrait: document.getElementById('enemyPortrait'),
+      enemySprite:   document.getElementById('enemySprite'),
       enemyName:     document.getElementById('enemyName'),
       enemyBoss:     document.getElementById('enemyBoss'),
       enemyHpFill:   document.getElementById('enemyHpFill'),
@@ -69,6 +119,153 @@
     var runeRows = {};      // id -> { row, button, status } built once, updated in place
 
     buildRuneList();
+    setupImageFallback(el.heroSprite, el.heroPortrait);
+    setupImageFallback(el.enemySprite, el.enemyPortrait);
+    setupImageFallback(el.swordTrail, null); // trail has no fallback text to reveal
+
+    // ---- graceful degradation: missing file -> old placeholder --
+    // `parentPortrait` is null for the sword trail, which has no
+    // fallback text of its own to show/hide — a missing trail file
+    // just means no trail effect, not a broken layout.
+    function setupImageFallback(img, parentPortrait) {
+      img.addEventListener('load', function () {
+        img.classList.add('loaded');
+        if (parentPortrait) parentPortrait.classList.add('has-sprite');
+      });
+      img.addEventListener('error', function () {
+        img.classList.remove('loaded');
+        if (parentPortrait) parentPortrait.classList.remove('has-sprite');
+      });
+    }
+
+    /* =========================================================
+       HERO SPRITE STATE MACHINE
+       ========================================================= */
+    var heroState = 'idle';
+    var heroRevertTimer = null;
+
+    function setHeroSprite(nextState) {
+      if (heroRevertTimer) { clearTimeout(heroRevertTimer); heroRevertTimer = null; }
+
+      if (nextState !== heroState) {
+        heroState = nextState;
+        el.heroSprite.src = HERO_SPRITES[nextState];
+      }
+
+      if (nextState !== 'idle') {
+        heroRevertTimer = setTimeout(function () {
+          heroState = 'idle';
+          el.heroSprite.src = HERO_SPRITES.idle;
+          heroRevertTimer = null;
+        }, HERO_STATE_MS);
+      }
+    }
+
+    function flashSwordTrail() {
+      // Snap to visible immediately (no fade-in — the swing itself
+      // is the "in"), then let the CSS `transition: opacity` on
+      // .sword-trail carry it back down to 0 once we flip the
+      // style a tick later. Two separate style writes across a
+      // frame boundary is what makes a CSS transition actually
+      // animate instead of jumping straight to the end value.
+      el.swordTrail.style.transition = 'none';
+      el.swordTrail.style.opacity = '1';
+      // Force layout so the browser commits opacity:1 before we
+      // re-enable the transition and drop back to 0 — otherwise
+      // both style changes can get batched into one paint and the
+      // trail never visibly appears.
+      void el.swordTrail.offsetWidth;
+      el.swordTrail.style.transition = '';
+      el.swordTrail.style.opacity = '0';
+    }
+
+    /* =========================================================
+       ENEMY SPRITE: one static file, chosen on spawn; hit/death/
+       attack-tell are all CSS on that same image, per the spec.
+       ========================================================= */
+    var enemyBaseFilter = 'none';
+    var enemyHitFlashTimer = null;
+    var enemyLungeTimer = null;
+
+    function onEnemySpawn(enemy) {
+      // A fresh enemy cancels any leftover animation from the
+      // previous one — without this, a death-fade timer from the
+      // enemy that just died could fire AFTER the next enemy has
+      // already spawned and hide it too.
+      if (enemyHitFlashTimer) { clearTimeout(enemyHitFlashTimer); enemyHitFlashTimer = null; }
+      if (enemyLungeTimer) { clearTimeout(enemyLungeTimer); enemyLungeTimer = null; }
+      el.enemyPortrait.classList.remove('dying', 'lunge');
+      el.enemyPortrait.style.transform = '';
+
+      enemyBaseFilter = enemy.art.filter || 'none';
+      el.enemySprite.style.filter = enemyBaseFilter;
+      el.enemySprite.style.transform = 'scale(' + enemy.art.scale + ')';
+      el.enemySprite.classList.remove('loaded'); // re-arm the fallback until THIS file loads
+      el.enemySprite.src = SPRITE_PATH + enemy.art.sprite;
+    }
+
+    function hitFlashEnemy() {
+      if (enemyHitFlashTimer) clearTimeout(enemyHitFlashTimer);
+      el.enemySprite.style.filter =
+        (enemyBaseFilter === 'none' ? '' : enemyBaseFilter + ' ') + 'brightness(3)';
+      enemyHitFlashTimer = setTimeout(function () {
+        el.enemySprite.style.filter = enemyBaseFilter;
+        enemyHitFlashTimer = null;
+      }, HIT_FLASH_MS);
+    }
+
+    function lungeEnemy() {
+      if (enemyLungeTimer) clearTimeout(enemyLungeTimer);
+      el.enemyPortrait.classList.add('lunge');
+      enemyLungeTimer = setTimeout(function () {
+        el.enemyPortrait.classList.remove('lunge');
+        enemyLungeTimer = null;
+      }, LUNGE_MS);
+    }
+
+    function playEnemyDeath() {
+      el.enemyPortrait.classList.add('dying');
+    }
+
+    /* =========================================================
+       Wire it all to the game's own events (planted in Phase 1's
+       game.js specifically so later phases could hook them without
+       touching combat code — see game.js's `emit` calls).
+       ========================================================= */
+    Game.on(state, 'heroAttack', function () {
+      setHeroSprite('attack');
+      flashSwordTrail();
+    });
+    Game.on(state, 'heroSpell', function () {
+      setHeroSprite('spell');
+    });
+    Game.on(state, 'heroDamaged', function () {
+      // Same moment, two effects: she flinches AND the enemy that
+      // just hit her gets the attack-tell lunge. There's no
+      // separate 'enemyAttack' event — heroDamaged only fires as a
+      // direct result of one, so it's the correct single hook for
+      // both sides of that exchange.
+      setHeroSprite('hurt');
+      lungeEnemy();
+    });
+    Game.on(state, 'retreat', function () {
+      // Per the spec: reuse the hurt sprite plus a brief fade/dim
+      // rather than a separate "defeated" sprite. She's falling
+      // back to farm, not dying — there is no death art and no
+      // game-over state.
+      setHeroSprite('hurt');
+      el.heroPortrait.classList.add('dimmed');
+    });
+    Game.on(state, 'spawn', function (enemy) {
+      onEnemySpawn(enemy);
+      el.heroPortrait.classList.remove('dimmed'); // the retreat pause is over; fighting resumes
+    });
+    Game.on(state, 'enemyDamaged', function () {
+      hitFlashEnemy();
+    });
+    Game.on(state, 'enemyKilled', function () {
+      playEnemyDeath();
+    });
 
     function buildRuneList() {
       // Guards against S.reset(): makeRenderer() runs again with a
