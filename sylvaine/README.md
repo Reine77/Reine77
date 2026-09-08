@@ -2,7 +2,7 @@
 
 Vanilla HTML/CSS/JS. No frameworks, no build step, no dependencies.
 
-## Phase 2 (current) — items, drop table, auto-equip/auto-sell
+## Phase 3 (current) — rune tree, purchase validation, spell-unlock gate
 
 **In the browser:** open `sylvaine/index.html` directly, then open the console (F12).
 The page itself is deliberately almost empty; the game reports to the console.
@@ -24,6 +24,9 @@ Debug commands available on `window.S`:
 | `S.inventory()` | what's equipped right now |
 | `S.giveItem('weapon'\|'armor', 'common'\|'rare'\|'epic')` | force-roll + equip a test item |
 | `S.rollLoot(n)` | simulate n drop rolls at the current stage; reports rarity/slot counts, touches no other state |
+| `S.runes()` | the whole tree: owned / affordable / locked-and-why, one row per node |
+| `S.buyRune('arcane_1')` | attempt a real purchase (spends real gold) |
+| `S.giveGold(5000)` | debug: hand her gold, for testing runes without waiting on the economy |
 
 **In Node (faster for balance work):**
 
@@ -33,7 +36,7 @@ node tools/simulate.mjs --minutes 60          # play an hour in ~a second
 node tools/simulate.mjs --minutes 5 --verbose # every swing
 node tools/simulate.mjs --seed 7 --spell      # different run, spell forced on
 node tools/simulate.mjs --minutes 60 --hz 144 # framerate comparison
-node tools/checks.mjs                         # 34 rule assertions
+node tools/checks.mjs                         # 55 rule assertions
 ```
 
 ## Files
@@ -45,6 +48,7 @@ js/rng.js           seedable RNG, so runs are reproducible
 js/log.js           combat log (console now, DOM panel in Phase 4)
 js/stats.js         computeStats + the dirty-flag cache
 js/items.js         item generation, drop table, auto-equip/auto-sell
+js/runes.js         rune tree data, purchase validation, spell-unlock gate
 js/enemies.js       roster, palette-swap variants, stage curve
 js/game.js          all the rules; step(state, dt) is the only entry point
 js/loop.js          requestAnimationFrame + the dt clamp
@@ -125,6 +129,44 @@ reason the numbers are checkable before anything is rendered.
   is no inventory, so nothing sits in a bag; it's either worn or converted to
   gold immediately (`tools/checks.mjs` check 14).
 
+## What Phase 3 added
+
+- **The rune tree is a flat array, not a nested structure**, exactly as the
+  spec required: each node names its own prerequisites by id
+  (`requires: [...]`), and the tree shape emerges entirely from those
+  references. That's what lets a hybrid node require two nodes from two
+  different branches at once — a nested `{children:[...]}` tree can't
+  express "my parent is two different nodes" without becoming a graph
+  anyway, so this starts as one. It's also why saving the tree later
+  (Phase 8) is just an array of owned ids, and why rendering it (Phase 6)
+  is a matter of walking `requires` to draw the lines.
+- **10 nodes**: 4 blade (attackSpeed/critChance/critMult), 4 arcane
+  (spellPower/spellCooldown), 2 hybrid — `hybrid_1` requires one blade node
+  and one arcane node directly, `hybrid_2` is the capstone requiring both
+  branch-4 nodes plus `hybrid_1`.
+- **The spell doesn't exist until `arcane_1` is bought.** Before that,
+  `hero.spellUnlocked` is false and `game.js`'s tick loop never even reads
+  the spell timer — she doesn't have a weak spell, she has no spell.
+  Verified mid-run: 30 seconds with zero casts, buy the rune, the next 30
+  seconds show real casts (`tools/checks.mjs` check 23) — the gate is a
+  functioning switch, not a flag nobody reads.
+- **All three purchase rules enforced together**: enough gold, prerequisites
+  owned, not already owned. A failed purchase spends nothing and grants
+  nothing — verified by attempting `hybrid_1` with only half its
+  prerequisites bought (fails), then succeeding once both branches are in
+  (`tools/checks.mjs` checks 21-22).
+- `tools/checks.mjs` grew from 34 to 55 assertions.
+
+## Known limitation, carried forward on purpose
+
+Runes still don't have any way to auto-buy — the player has to type
+`S.buyRune(id)` by hand, since there's no UI yet (that's Phase 6). This
+means a long `S.fast(...)` run will pile up unspent gold exactly like
+Phase 1/2's runs did, because nothing in the simulation itself decides to
+spend it. That's expected and not a bug: the spec is explicit that "which
+rune nodes to buy" is the ONE decision a human player makes, so the game
+logic was never supposed to buy runes on its own.
+
 ## Known balance state (expected, not a bug)
 
 Pacing was retuned after first review: the original numbers put the first
@@ -156,7 +198,7 @@ other two channels; the numbers here are a baseline, not a final balance.
 
 - [x] **1** Game logic, console only
 - [x] **2** Items, `computeStats` aggregation, drop table, auto-equip/auto-sell
-- [ ] **3** Rune tree data, purchase validation, spell-unlock gate
+- [x] **3** Rune tree data, purchase validation, spell-unlock gate
 - [ ] **4** Minimal DOM UI
 - [ ] **5** Sprites: hero state swaps, sword trail, enemy hit-flash/death CSS
 - [ ] **6** Rune tree UI

@@ -24,6 +24,13 @@
      S.rollLoot(200)          simulate 200 kills' worth of drop rolls,
                               report rarity/slot counts (no other
                               game state changes — pure drop-table check)
+
+     -- Phase 3: runes --
+     S.runes()                the whole tree: owned / affordable /
+                              locked-and-why, one row per node
+     S.buyRune('arcane_1')    attempt a real purchase (spends gold)
+     S.giveGold(5000)         debug: hand her gold, for testing runes
+                              without waiting on a real economy
    ============================================================= */
 (function (root) {
   'use strict';
@@ -32,6 +39,7 @@
   var Game = Sylvaine.Game;
   var Stats = Sylvaine.Stats;
   var Items = Sylvaine.Items;
+  var Runes = Sylvaine.Runes;
 
   var state = Game.createState({ seed: 12345, echo: true });
   var loop = Sylvaine.makeLoop(state);
@@ -64,7 +72,12 @@
         "S.giveItem('weapon'|'armor', 'common'|'rare'|'epic')",
         '                          -> force-roll + equip a test item',
         'S.rollLoot(n)             -> simulate n drop rolls at the current',
-        '                             stage, report rarity/slot counts'
+        '                             stage, report rarity/slot counts',
+        '',
+        '-- Phase 3: runes --',
+        'S.runes()                 -> the whole tree: status + why-not',
+        "S.buyRune('arcane_1')     -> attempt a real purchase",
+        'S.giveGold(n)             -> debug: hand her gold'
       ].join('\n'));
     },
 
@@ -116,7 +129,9 @@
         bosses:   state.totals.bossKills,
         items:    state.totals.itemDrops + ' found / ' + state.totals.itemsEquipped +
                   ' equipped / ' + state.totals.epicsFound + ' epic',
-        retreats: state.totals.retreats
+        retreats: state.totals.retreats,
+        runes:    state.hero.runes.length + '/' + Runes.NODES.length +
+                  (state.hero.spellUnlocked ? ' (spell unlocked)' : ' (no spell yet)')
       });
       return state.totals;
     },
@@ -182,6 +197,44 @@
       console.table(counts);
       console.table(slots);
       return counts;
+    },
+
+    // One row per node, with a plain-English reason it's locked
+    // when it is — the same message canPurchase would give you,
+    // so this is the "why can't I buy this" answer, not just a
+    // yes/no.
+    runes: function () {
+      var hero = state.hero;
+      var rows = {};
+      Runes.NODES.forEach(function (node) {
+        var status;
+        if (Runes.isOwned(hero, node.id)) {
+          status = 'OWNED';
+        } else {
+          var check = Runes.canPurchase(hero, node.id);
+          status = check.ok ? 'affordable now' : 'locked: ' + check.reason;
+        }
+        rows[node.id] = {
+          branch: node.branch,
+          name: node.name,
+          cost: node.cost,
+          requires: node.requires.join(', ') || '(none)',
+          status: status
+        };
+      });
+      console.table(rows);
+    },
+
+    buyRune: function (id) {
+      var result = Runes.purchase(state, id);
+      console.log(result ? 'bought "' + id + '"' : 'purchase failed — see the log line above for why');
+      return result;
+    },
+
+    giveGold: function (amount) {
+      amount = amount || 1000;
+      state.hero.gold += amount;
+      console.log('gold: ' + Math.round(state.hero.gold));
     },
 
     reset: function (seed) {

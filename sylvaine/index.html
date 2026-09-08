@@ -49,8 +49,9 @@
       log     -> plain utility
       stats   -> reads CONFIG
       items   -> reads CONFIG, Stats (Phase 2 — generation + auto-equip)
+      runes   -> reads Stats (Phase 3 — rune tree + spell-unlock gate)
       enemies -> reads CONFIG
-      game    -> reads CONFIG, Stats, Enemies, (optionally) Items
+      game    -> reads CONFIG, Stats, Enemies, (optionally) Items, Runes
       loop    -> calls Game.step
       main    -> wires it all together, must be last
   -->
@@ -59,6 +60,7 @@
   <script src="js/log.js"></script>
   <script src="js/stats.js"></script>
   <script src="js/items.js"></script>
+  <script src="js/runes.js"></script>
   <script src="js/enemies.js"></script>
   <script src="js/game.js"></script>
   <script src="js/loop.js"></script>

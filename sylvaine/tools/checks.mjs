@@ -14,11 +14,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const jsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'js');
-for (const f of ['config.js', 'rng.js', 'log.js', 'stats.js', 'items.js', 'enemies.js', 'game.js']) {
+for (const f of ['config.js', 'rng.js', 'log.js', 'stats.js', 'items.js', 'runes.js', 'enemies.js', 'game.js']) {
   new Function(readFileSync(join(jsDir, f), 'utf8')).call(globalThis);
 }
 const { Sylvaine } = globalThis;
-const { Game, Stats, Enemies, CONFIG } = Sylvaine;
+const { Game, Stats, Enemies, Runes, CONFIG } = Sylvaine;
 
 let passed = 0;
 const failures = [];
@@ -284,6 +284,116 @@ console.log('\nPhase 1 checks\n');
   check('hero.base is still untouched by any of this (gear is never merged into base)',
     state.hero.base.damage === CONFIG.heroBase.damage &&
     state.hero.base.hp === CONFIG.heroBase.hp);
+}
+
+/* --- 18. every rune's prerequisites actually exist --------- */
+{
+  const ids = new Set(Runes.NODES.map(n => n.id));
+  let ok = true, bad = '';
+  for (const node of Runes.NODES) {
+    for (const req of node.requires) {
+      if (!ids.has(req)) { ok = false; bad = node.id + ' requires missing "' + req + '"'; }
+    }
+  }
+  check('every requires[] id points at a real node', ok, bad);
+}
+
+/* --- 19. at least one hybrid node needs BOTH branches ------- */
+{
+  const hasCrossBranchHybrid = Runes.NODES.some(node => {
+    if (node.branch !== 'hybrid') return false;
+    const branchesRequired = new Set(node.requires.map(r => Runes.getNode(r)?.branch));
+    return branchesRequired.has('blade') && branchesRequired.has('arcane');
+  });
+  check('at least one hybrid node requires nodes from both blade and arcane',
+    hasCrossBranchHybrid);
+}
+
+/* --- 20. the spell is off until the first arcane rune ------ */
+{
+  const state = Game.createState({ seed: 18, echo: false });
+  check('spellUnlocked starts false', state.hero.spellUnlocked === false);
+
+  state.hero.gold = 10000;
+  const before = Stats.computeStats(state.hero).spellPower;
+  const bought = Runes.purchase(state, 'arcane_1');
+  const after = Stats.computeStats(state.hero).spellPower;
+
+  check('buying the first arcane rune succeeds', bought === true);
+  check('spellUnlocked flips true on that purchase', state.hero.spellUnlocked === true);
+  check('spellPower actually increased (cache was invalidated)', after > before,
+    before + ' -> ' + after);
+}
+
+/* --- 21. the three purchase rules are enforced -------------- */
+{
+  const state = Game.createState({ seed: 19, echo: false });
+
+  state.hero.gold = 0;
+  check('cannot buy without enough gold', Runes.purchase(state, 'blade_1') === false);
+  check('gold unchanged after a failed purchase', state.hero.gold === 0);
+  check('rune not granted after a failed purchase', !Runes.isOwned(state.hero, 'blade_1'));
+
+  check('cannot buy a rune whose prereq is missing',
+    Runes.purchase(state, 'blade_2') === false);
+
+  state.hero.gold = 100000;
+  check('can buy once gold and prereqs are both satisfied',
+    Runes.purchase(state, 'blade_1') === true);
+  const goldAfterFirst = state.hero.gold;
+  check('cannot buy the same rune twice', Runes.purchase(state, 'blade_1') === false);
+  check('gold not spent a second time on a duplicate purchase',
+    state.hero.gold === goldAfterFirst);
+
+  check('the prereq that was blocked before now succeeds',
+    Runes.purchase(state, 'blade_2') === true);
+}
+
+/* --- 22. hybrid node genuinely needs both branches bought --- */
+{
+  const state = Game.createState({ seed: 20, echo: false });
+  state.hero.gold = 100000;
+  Runes.purchase(state, 'blade_1');
+  Runes.purchase(state, 'blade_2');
+  check('hybrid_1 still blocked with only the blade half done',
+    Runes.purchase(state, 'hybrid_1') === false);
+
+  Runes.purchase(state, 'arcane_1');
+  Runes.purchase(state, 'arcane_2');
+  check('hybrid_1 succeeds once both halves are owned',
+    Runes.purchase(state, 'hybrid_1') === true);
+}
+
+/* --- 23. runes purchased mid-run actually change play -------
+     Buys arcane_1 partway through a run and confirms the spell,
+     which never once fired before (check #10), starts casting
+     afterward — i.e. the gate is a real gameplay switch, not
+     just a flag nobody reads.                                 */
+{
+  const state = Game.createState({ seed: 21, echo: false });
+  for (let i = 0; i < 60 * 30; i++) Game.step(state, 1 / 60); // 30s, no spell yet
+  check('no casts before the rune is bought', state.totals.spellCasts === 0);
+
+  state.hero.gold += 10000;
+  const bought = Runes.purchase(state, 'arcane_1');
+  check('mid-run purchase succeeds', bought === true);
+
+  for (let i = 0; i < 60 * 30; i++) Game.step(state, 1 / 60); // 30 more seconds
+  check('spell starts casting once unlocked mid-run', state.totals.spellCasts > 0,
+    String(state.totals.spellCasts));
+}
+
+/* --- 24. hero.base is STILL untouched, even by rune spending - */
+{
+  const state = Game.createState({ seed: 22, echo: false });
+  const before = JSON.stringify(state.hero.base);
+  state.hero.gold = 100000;
+  for (const node of Runes.NODES) Runes.purchase(state, node.id);
+  check('buying every rune in the tree never touches hero.base',
+    JSON.stringify(state.hero.base) === before);
+  check('all ' + Runes.NODES.length + ' nodes were actually purchasable in prereq order',
+    state.hero.runes.length === Runes.NODES.length,
+    state.hero.runes.length + '/' + Runes.NODES.length);
 }
 
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');

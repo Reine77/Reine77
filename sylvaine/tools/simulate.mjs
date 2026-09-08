@@ -30,7 +30,7 @@ const jsDir = join(here, '..', 'js');
 
 // Same order as index.html. Note main.js is NOT loaded — it is
 // the browser entry point and would start a rAF loop.
-const files = ['config.js', 'rng.js', 'log.js', 'stats.js', 'items.js', 'enemies.js', 'game.js'];
+const files = ['config.js', 'rng.js', 'log.js', 'stats.js', 'items.js', 'runes.js', 'enemies.js', 'game.js'];
 for (const file of files) {
   const src = readFileSync(join(jsDir, file), 'utf8');
   // eslint-disable-next-line no-new-func
