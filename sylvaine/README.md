@@ -2,10 +2,13 @@
 
 Vanilla HTML/CSS/JS. No frameworks, no build step, no dependencies.
 
-## Phase 3 (current) — rune tree, purchase validation, spell-unlock gate
+## Phase 4 (current) — minimal DOM UI
 
-**In the browser:** open `sylvaine/index.html` directly, then open the console (F12).
-The page itself is deliberately almost empty; the game reports to the console.
+**In the browser:** open `sylvaine/index.html` directly. There's a real screen now —
+a VS-style split arena (hero left, enemy right), stat panel, XP/gold/stage
+counters, a basic rune-buy list, and the combat log rendered as a panel
+instead of only the console. The console (F12) still works exactly as
+before — every `S.*` debug command is still there.
 
 Debug commands available on `window.S`:
 
@@ -43,15 +46,18 @@ node tools/checks.mjs                         # 55 rule assertions
 
 ```
 index.html          load order + why these are not ES modules
+css/style.css       Phase 4's quick dark theme; Phase 7 revisits it
 js/config.js        every tuning number, no logic
 js/rng.js           seedable RNG, so runs are reproducible
-js/log.js           combat log (console now, DOM panel in Phase 4)
+js/log.js           combat log (console + DOM panel; totalPushed lets
+                    render.js know when a new line arrived)
 js/stats.js         computeStats + the dirty-flag cache
 js/items.js         item generation, drop table, auto-equip/auto-sell
 js/runes.js         rune tree data, purchase validation, spell-unlock gate
 js/enemies.js       roster, palette-swap variants, stage curve
 js/game.js          all the rules; step(state, dt) is the only entry point
 js/loop.js          requestAnimationFrame + the dt clamp
+js/render.js        reads state, writes DOM — never the reverse
 js/main.js          browser entry point and the S.* debug API
 tools/simulate.mjs  headless runner
 tools/checks.mjs    sanity assertions
@@ -194,15 +200,51 @@ linearly, so walls are inevitable and intentional — they are what makes gold
 worth spending. Expect to re-tune `config.js` once Phases 2 and 3 give her the
 other two channels; the numbers here are a baseline, not a final balance.
 
+## What Phase 4 added
+
+- **`render.js` reads state, writes DOM — and never the reverse**, same
+  discipline as everything before it: game logic doesn't know the screen
+  exists (`loop.js` still just calls `Game.step`), and rendering doesn't
+  mutate game state directly. The one exception is intentional: clicking a
+  rune's Buy button calls `Runes.purchase(state, id)` — the exact same public
+  action `S.buyRune(id)` already used. The rules for whether that succeeds
+  still live entirely in `runes.js`; the click just forwards to it.
+- **The combat log only rebuilds its DOM when something actually changed.**
+  `log.js` grew a `totalPushed` counter (see its header comment) because
+  `entries.length` alone can't tell you "did a new line arrive" once the log
+  hits its 200-entry cap and starts shifting old lines out — the array stops
+  growing while lines keep coming in. Comparing `totalPushed` against a
+  locally remembered number is exact and free every frame it *hasn't*
+  changed, which is most frames.
+- **The rune-buy list is deliberately not the real tree UI.** It's one flat
+  list of buttons — the real clickable tree with prerequisite lines is
+  Phase 6. This exists now so runes don't require the console anymore.
+- **Companion and Pet got two reserved, empty slots in the layout**
+  (`#supportRow`) and nothing else — no data model, no mechanics. They
+  weren't in the original spec; they're planned as their own future phases
+  (see below) with the same design rigor items/runes got, not squeezed into
+  this one.
+- Verified end-to-end in headless Chromium (not just Node): the page loads
+  with zero JS errors, all 10 rune rows render, the HP bar width and combat
+  log are being written by the live render loop (not just present at parse
+  time), and `S.reset(seed)` rebuilds the rune list correctly instead of
+  duplicating it (a real bug caught in testing — `buildRuneList()` wasn't
+  clearing old rows before appending new ones).
+
 ## Phase plan
 
 - [x] **1** Game logic, console only
 - [x] **2** Items, `computeStats` aggregation, drop table, auto-equip/auto-sell
 - [x] **3** Rune tree data, purchase validation, spell-unlock gate
-- [ ] **4** Minimal DOM UI
+- [x] **4** Minimal DOM UI
 - [ ] **5** Sprites: hero state swaps, sword trail, enemy hit-flash/death CSS
-- [ ] **6** Rune tree UI
+- [ ] **6** Rune tree UI (the real clickable tree; Phase 4's list is a stand-in)
 - [ ] **7** Juice: floating numbers, HP bar lerp, crit flash, drop toasts
 - [ ] **8** Save/load + offline progress from a stored timestamp
 - [ ] **9** Whispers log (boss-defeat story fragments)
 - [ ] **10** Intro sequence (5 stills, click to advance, skippable)
+- [ ] **11** Companion system (own combatant, periodic-cast timer, own
+      acquisition rule) — added to the roadmap during Phase 4 review, not
+      part of the original spec
+- [ ] **12** Pet system (passive-only stat modifiers — mechanically closer to
+      a rune/item than a combatant) — same origin as Phase 11

@@ -3,33 +3,94 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sylvaine — Phase 1 (logic only)</title>
-<style>
-  body {
-    margin: 0;
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    background: #14131a;
-    color: #cfc9bd;
-    font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
-    text-align: center;
-    padding: 2rem;
-  }
-  h1 { font-size: 1.1rem; letter-spacing: .18em; text-transform: uppercase; }
-  code { background: #23202c; padding: .1em .4em; border-radius: 3px; color: #e0d7c4; }
-  p { max-width: 42rem; }
-  .dim { color: #6f6a7d; }
-</style>
+<title>Sylvaine — Phase 4</title>
+<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <main>
-    <h1>Sylvaine &mdash; Phase 1</h1>
-    <p>Game logic only. There is deliberately nothing to see here yet.</p>
-    <p><strong>Open the browser console</strong> (F12) to watch the fight.<br>
-       Type <code>S.help()</code> for the debug commands.</p>
-    <p class="dim">Phase 4 adds the real UI. Phase 5 adds the sprites.</p>
-  </main>
+  <div id="app">
+
+    <header id="topbar">
+      <span class="title">Sylvaine</span>
+      <span><span class="stat-label">Stage</span><span id="stageValue">1</span></span>
+      <span><span class="stat-label">Level</span><span id="levelValue">1</span></span>
+      <span class="gold"><span class="stat-label">Gold</span><span id="goldValue">0</span></span>
+      <span id="statusLine"></span>
+    </header>
+
+    <!-- XP bar, its own row since it needs full width to read well -->
+    <div class="panel">
+      <div class="hpbar" style="max-width:none;">
+        <div class="hpbar-fill" id="xpFill" style="background:var(--gold);"></div>
+        <span class="hpbar-text" id="xpText"></span>
+      </div>
+    </div>
+
+    <!-- The VS arena — hero left / enemy right, split-screen frame.
+         Static placeholders for now; Phase 5 swaps these for real
+         sprites (idle/attack/hurt/spell states + the sword trail). -->
+    <section id="arena">
+      <div class="combatant hero">
+        <div class="portrait-placeholder">Sylvaine<br>(sprite: Phase 5)</div>
+        <div class="name">Sylvaine</div>
+        <div class="hpbar">
+          <div class="hpbar-fill" id="heroHpFill"></div>
+          <span class="hpbar-text" id="heroHpText"></span>
+        </div>
+        <div class="substats">
+          dmg <span id="statDamage">-</span> ·
+          spd <span id="statSpeed">-</span> ·
+          crit <span id="statCrit">-</span><br>
+          dps <span id="statDps">-</span> ·
+          spell <span id="statSpell">-</span>
+        </div>
+      </div>
+
+      <div id="vsBadge">VS</div>
+
+      <div class="combatant enemy">
+        <div class="portrait-placeholder">Enemy<br>(sprite: Phase 5)</div>
+        <span class="boss-badge" id="enemyBoss" hidden>BOSS</span>
+        <div class="name" id="enemyName">…</div>
+        <div class="hpbar">
+          <div class="hpbar-fill" id="enemyHpFill"></div>
+          <span class="hpbar-text" id="enemyHpText"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Reserved layout only — no data or mechanics behind these.
+         Companion and Pet are NOT in the current spec; they're
+         planned as their own later phases (see README roadmap). -->
+    <section id="supportRow">
+      <div class="support-slot companion">
+        <div class="slot-title">Companion</div>
+        Not yet implemented — planned as a future phase.
+      </div>
+      <div class="support-slot pet">
+        <div class="slot-title">Pet</div>
+        Not yet implemented.
+      </div>
+    </section>
+
+    <div class="panel">
+      <h2>Hero</h2>
+      <div id="gearLine"></div>
+    </div>
+
+    <!-- Basic rune-buy list — NOT the real tree UI (that's Phase
+         6, with visual prerequisite lines). This is one flat list
+         of buttons so runes don't require the console anymore. -->
+    <div class="panel">
+      <h2>Runes</h2>
+      <div id="runeList"></div>
+    </div>
+
+    <div class="panel" id="logPanel">
+      <h2>Log</h2>
+      <div id="logList"></div>
+    </div>
+
+  </div>
 
   <!--
     NOTE ON LOAD ORDER — and why these are not ES modules.
@@ -53,6 +114,9 @@
       enemies -> reads CONFIG
       game    -> reads CONFIG, Stats, Enemies, (optionally) Items, Runes
       loop    -> calls Game.step
+      render  -> reads state, writes DOM (Phase 4) — needs the DOM
+                 elements above to already exist, so it loads after
+                 #app's markup, same as any other script placement
       main    -> wires it all together, must be last
   -->
   <script src="js/config.js"></script>
@@ -64,6 +128,7 @@
   <script src="js/enemies.js"></script>
   <script src="js/game.js"></script>
   <script src="js/loop.js"></script>
+  <script src="js/render.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

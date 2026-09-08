@@ -1,0 +1,304 @@
+/* =============================================================
+   style.css — Phase 4's "quick dark theme", not a real design
+   pass. Phase 7 (juice) revisits all of this once there's
+   something worth polishing — floating damage numbers, a
+   lerped HP bar, crit flashes. This file exists so staring at
+   the game for hours doesn't mean staring at browser-default
+   white.
+   ============================================================= */
+
+:root {
+  --bg:        #14131a;
+  --panel:     #1c1a24;
+  --panel-2:   #23202c;
+  --border:    #322e3d;
+  --text:      #cfc9bd;
+  --text-dim:  #7c7787;
+  --gold:      #d9c169;
+  --hero:      #7fbfa0;
+  --hero-dim:  #3c6653;
+  --enemy:     #c05a5a;
+  --enemy-dim: #5c2f2f;
+  --boss:      #d98a4a;
+  --hp-fill:   #b5453f;
+  --hp-back:   #3a1f1f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
+
+/* ---- top status bar ------------------------------------- */
+#topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1.5rem;
+  align-items: baseline;
+  padding: .6rem .9rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+#topbar .title {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--text);
+  margin-right: auto;
+}
+#topbar .stat-label { color: var(--text-dim); margin-right: .3em; }
+#topbar .gold { color: var(--gold); }
+#topbar #statusLine { width: 100%; color: var(--text-dim); font-size: .85em; }
+#topbar #statusLine.farming { color: var(--boss); }
+
+/* ---- the VS arena ----------------------------------------
+   A simple two-panel split with a jagged clip-path edge on the
+   side facing the divider, plus a "VS" badge in the middle.
+   That's the whole "simple css effect" — no animation yet;
+   Phase 5 replaces the placeholder portraits with real sprites
+   and adds the swap-on-attack/hurt/spell timing.               */
+#arena {
+  position: relative;
+  display: flex;
+  min-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #1a1822, #100f16);
+}
+
+.combatant {
+  flex: 1 1 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 1rem 1.5rem 1rem;
+  position: relative;
+}
+
+.combatant.hero {
+  background: linear-gradient(135deg, rgba(127,191,160,.14), transparent 60%);
+  clip-path: polygon(0 0, 92% 0, 82% 100%, 0 100%);
+}
+.combatant.enemy {
+  background: linear-gradient(225deg, rgba(192,90,90,.14), transparent 60%);
+  clip-path: polygon(18% 0, 100% 0, 100% 100%, 8% 100%);
+}
+
+.portrait-placeholder {
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  border: 2px dashed var(--border);
+  margin-bottom: .75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: .7rem;
+  text-align: center;
+}
+.combatant.hero .portrait-placeholder { border-color: var(--hero-dim); }
+.combatant.enemy .portrait-placeholder { border-color: var(--enemy-dim); }
+
+.combatant .name {
+  font-size: 1.05rem;
+  margin-bottom: .3rem;
+}
+.combatant.hero .name { color: var(--hero); }
+.combatant.enemy .name { color: var(--enemy); }
+
+.boss-badge {
+  display: inline-block;
+  font-size: .7rem;
+  letter-spacing: .12em;
+  color: var(--boss);
+  border: 1px solid var(--boss);
+  border-radius: 3px;
+  padding: .05rem .4rem;
+  margin-bottom: .3rem;
+}
+
+.hpbar {
+  position: relative;
+  width: 100%;
+  max-width: 220px;
+  height: 16px;
+  background: var(--hp-back);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.hpbar-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: var(--hp-fill);
+  /* Direct width snap for now — Phase 7 adds the lerp/transition. */
+}
+.combatant.hero .hpbar-fill { background: var(--hero-dim); }
+.hpbar-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .7rem;
+  color: var(--text);
+  text-shadow: 0 1px 2px #000;
+}
+
+.substats {
+  margin-top: .4rem;
+  font-size: .75rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+#vsBadge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text);
+  text-shadow: 0 0 8px #000, 0 0 16px #000;
+  letter-spacing: .1em;
+  pointer-events: none;
+}
+
+/* ---- companion / pet placeholders --------------------------
+   Reserved layout only — no mechanics behind these yet. See
+   README: these are their own future phases, not part of the
+   current spec. Deliberately inert (no hover state, no data). */
+#supportRow {
+  display: flex;
+  gap: .75rem;
+}
+.support-slot {
+  flex: 1;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: .6rem;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: .75rem;
+  background: var(--panel);
+}
+.support-slot.companion { flex: 2; }
+.support-slot.pet { flex: 1; }
+.support-slot .slot-title {
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-size: .65rem;
+  margin-bottom: .2rem;
+}
+
+/* ---- generic panel ---------------------------------------- */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .75rem .9rem;
+}
+.panel h2 {
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--text-dim);
+  margin-bottom: .5rem;
+}
+
+/* ---- hero stat grid ----------------------------------------*/
+#statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: .4rem .8rem;
+  font-size: .85rem;
+}
+#statGrid .stat-label { color: var(--text-dim); display: block; font-size: .7rem; }
+#gearLine { margin-top: .5rem; font-size: .8rem; color: var(--text-dim); }
+#gearLine .item-name { color: var(--gold); }
+
+/* ---- rune buy list -------------------------------------------
+   Deliberately basic — the real clickable tree is Phase 6. This
+   is a flat list of buttons so runes don't require the console. */
+#runeList {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.rune-row {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .35rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: .8rem;
+}
+.rune-row .rune-branch {
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: .1rem .4rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.rune-row.branch-blade .rune-branch { color: var(--enemy); border-color: var(--enemy-dim); }
+.rune-row.branch-arcane .rune-branch { color: #7ab0d9; border-color: #2f4f66; }
+.rune-row.branch-hybrid .rune-branch { color: var(--gold); border-color: #6b5c2a; }
+
+.rune-row .rune-name { flex: 1; }
+.rune-row .rune-cost { color: var(--gold); min-width: 4.5em; text-align: right; }
+.rune-row .rune-status { color: var(--text-dim); font-size: .7rem; min-width: 9em; }
+.rune-row.owned { opacity: .55; }
+.rune-row button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .25rem .6rem;
+  font: inherit;
+  cursor: pointer;
+}
+.rune-row button:disabled { opacity: .4; cursor: not-allowed; }
+.rune-row button:not(:disabled):hover { border-color: var(--gold); }
+
+/* ---- combat log --------------------------------------------- */
+#logPanel { max-height: 260px; display: flex; flex-direction: column; }
+#logList {
+  overflow-y: auto;
+  font-size: .78rem;
+  line-height: 1.5;
+  flex: 1;
+}
+#logList .log-line { white-space: pre-wrap; }
+#logList .log-time { color: var(--text-dim); }
+#logList .kind-kill, #logList .kind-bosskill { color: var(--hero); }
+#logList .kind-level { color: var(--gold); font-weight: 600; }
+#logList .kind-retreat, #logList .kind-down { color: var(--enemy); }
+#logList .kind-boss { color: var(--boss); font-weight: 600; }
+#logList .kind-item { color: #7ab0d9; }
+#logList .kind-rune { color: var(--gold); }
+#logList .kind-story { color: var(--text-dim); font-style: italic; }
