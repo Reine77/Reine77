@@ -2,7 +2,7 @@
 
 Vanilla HTML/CSS/JS. No frameworks, no build step, no dependencies.
 
-## Phase 1 (current) — game logic only, no UI
+## Phase 2 (current) — items, drop table, auto-equip/auto-sell
 
 **In the browser:** open `sylvaine/index.html` directly, then open the console (F12).
 The page itself is deliberately almost empty; the game reports to the console.
@@ -19,8 +19,11 @@ Debug commands available on `window.S`:
 | `S.fast(600)` | simulate 600 seconds instantly |
 | `S.verbose(true)` | log every swing (loud) |
 | `S.unlockSpell()` | debug-only; Phase 3 does it properly |
-| `S.report()` | totals table |
+| `S.report()` | totals table (now includes equipped gear + item stats) |
 | `S.reset(seed)` | start over with a given seed |
+| `S.inventory()` | what's equipped right now |
+| `S.giveItem('weapon'\|'armor', 'common'\|'rare'\|'epic')` | force-roll + equip a test item |
+| `S.rollLoot(n)` | simulate n drop rolls at the current stage; reports rarity/slot counts, touches no other state |
 
 **In Node (faster for balance work):**
 
@@ -30,7 +33,7 @@ node tools/simulate.mjs --minutes 60          # play an hour in ~a second
 node tools/simulate.mjs --minutes 5 --verbose # every swing
 node tools/simulate.mjs --seed 7 --spell      # different run, spell forced on
 node tools/simulate.mjs --minutes 60 --hz 144 # framerate comparison
-node tools/checks.mjs                         # 23 rule assertions
+node tools/checks.mjs                         # 34 rule assertions
 ```
 
 ## Files
@@ -41,6 +44,7 @@ js/config.js        every tuning number, no logic
 js/rng.js           seedable RNG, so runs are reproducible
 js/log.js           combat log (console now, DOM panel in Phase 4)
 js/stats.js         computeStats + the dirty-flag cache
+js/items.js         item generation, drop table, auto-equip/auto-sell
 js/enemies.js       roster, palette-swap variants, stage curve
 js/game.js          all the rules; step(state, dt) is the only entry point
 js/loop.js          requestAnimationFrame + the dt clamp
@@ -92,6 +96,35 @@ reason the numbers are checkable before anything is rendered.
 - Enemy data is 6 base sprites driving 20 variants via palette treatments, plus
   4 boss sprites cycled with treatments for the endless tail.
 
+## What Phase 2 added
+
+- **Items are generated from a "power budget"**, not hand-written stat ranges
+  per rarity: `budget = base * growth^(stage-1) * rarityMult`, split across
+  1-3 random stats and converted to values via a per-stat weight. Same shape
+  as `enemies.js`'s HP curve, so loot scales automatically as stages get
+  harder — no per-stage tables to maintain by hand.
+- **Auto-equip compares a weighted "power" score, not a literal stat sum.**
+  `+0.1 attackSpeed` and `+5 damage` are both small numbers but not worth the
+  same amount (attackSpeed compounds into DPS, damage adds to it), so a raw
+  sum would make the logic irrationally prefer damage stats. The weight table
+  (`config.js` → `items.powerWeights`) is the same one used to size an item's
+  rolls in the first place, so generation and comparison agree.
+- **Percentage stats are capped per-affix** (`items.statCaps`): `critChance`
+  and `critMult` have a real ceiling — 100% crit chance is already the
+  maximum possible value — but the item budget grows exponentially forever,
+  same as enemy HP. Without a cap, a stage-40+ roll produced things like
+  "+250% crit chance" on one affix. `computeStats` already clamps the FINAL
+  total so nothing broke, but the item itself was nonsense; `damage`,
+  `spellPower`, and `hp` are deliberately left uncapped since they have no
+  natural ceiling and are the intended "big non-linear jump" channel.
+- Verified against 50,000-roll samples: normal stages drop ~15.1% of the
+  time (85/15 common/rare split), boss stages drop 100% of the time (40/50/10
+  common/rare/epic split), and epic never appears outside a boss kill —
+  matching the spec's drop table exactly (`tools/checks.mjs` checks 12-13).
+- When a better item is found, the item it replaces is auto-sold too — there
+  is no inventory, so nothing sits in a bag; it's either worn or converted to
+  gold immediately (`tools/checks.mjs` check 14).
+
 ## Known balance state (expected, not a bug)
 
 Pacing was retuned after first review: the original numbers put the first
@@ -122,7 +155,7 @@ other two channels; the numbers here are a baseline, not a final balance.
 ## Phase plan
 
 - [x] **1** Game logic, console only
-- [ ] **2** Items, `computeStats` aggregation, drop table, auto-equip/auto-sell
+- [x] **2** Items, `computeStats` aggregation, drop table, auto-equip/auto-sell
 - [ ] **3** Rune tree data, purchase validation, spell-unlock gate
 - [ ] **4** Minimal DOM UI
 - [ ] **5** Sprites: hero state swaps, sword trail, enemy hit-flash/death CSS

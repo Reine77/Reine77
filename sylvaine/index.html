@@ -48,8 +48,9 @@
       rng     -> plain utility
       log     -> plain utility
       stats   -> reads CONFIG
+      items   -> reads CONFIG, Stats (Phase 2 — generation + auto-equip)
       enemies -> reads CONFIG
-      game    -> reads CONFIG, Stats, Enemies
+      game    -> reads CONFIG, Stats, Enemies, (optionally) Items
       loop    -> calls Game.step
       main    -> wires it all together, must be last
   -->
@@ -57,6 +58,7 @@
   <script src="js/rng.js"></script>
   <script src="js/log.js"></script>
   <script src="js/stats.js"></script>
+  <script src="js/items.js"></script>
   <script src="js/enemies.js"></script>
   <script src="js/game.js"></script>
   <script src="js/loop.js"></script>

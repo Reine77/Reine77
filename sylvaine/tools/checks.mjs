@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const jsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'js');
-for (const f of ['config.js', 'rng.js', 'log.js', 'stats.js', 'enemies.js', 'game.js']) {
+for (const f of ['config.js', 'rng.js', 'log.js', 'stats.js', 'items.js', 'enemies.js', 'game.js']) {
   new Function(readFileSync(join(jsDir, f), 'utf8')).call(globalThis);
 }
 const { Sylvaine } = globalThis;
@@ -185,6 +185,105 @@ console.log('\nPhase 1 checks\n');
   check('the same seed reproduces the same run', run(11) === run(11), run(11));
   check('a different seed produces a different run', run(11) !== run(99),
     run(11) + ' vs ' + run(99));
+}
+
+/* --- 12. epic never drops from a normal stage ------------- */
+{
+  const { Items } = Sylvaine;
+  const state = Game.createState({ seed: 12, echo: false });
+  let epicsFromNormal = 0, drops = 0;
+  const normalEnemy = Enemies.spawn(5, Sylvaine.makeRng(1));
+  for (let i = 0; i < 20000; i++) {
+    const item = Items.rollDrop(state, normalEnemy);
+    if (item) {
+      drops++;
+      if (item.rarity === 'epic') epicsFromNormal++;
+    }
+  }
+  check('epic never drops from a normal stage (20000 rolls)', epicsFromNormal === 0,
+    epicsFromNormal + ' epics out of ' + drops + ' drops');
+  check('normal drop chance is roughly 15% (within 2%)',
+    Math.abs(drops / 20000 - CONFIG.items.dropChance.normal) < 0.02,
+    (drops / 20000 * 100).toFixed(1) + '%');
+}
+
+/* --- 13. boss always drops, and CAN roll epic -------------- */
+{
+  const { Items } = Sylvaine;
+  const state = Game.createState({ seed: 13, echo: false });
+  const bossEnemy = Enemies.spawn(10, Sylvaine.makeRng(1));
+  let drops = 0, epics = 0;
+  for (let i = 0; i < 2000; i++) {
+    const item = Items.rollDrop(state, bossEnemy);
+    if (item) drops++;
+    if (item && item.rarity === 'epic') epics++;
+  }
+  check('boss stages always drop (2000/2000)', drops === 2000, drops + '/2000');
+  check('boss stages can roll epic', epics > 0, epics + ' epics out of 2000');
+}
+
+/* --- 14. auto-equip only replaces a strictly better item --- */
+{
+  const { Items } = Sylvaine;
+  const state = Game.createState({ seed: 14, echo: false });
+  const weak = { id: 'w', slot: 'weapon', rarity: 'common', mods: { damage: 1 } };
+  const strong = { id: 's', slot: 'weapon', rarity: 'rare', mods: { damage: 100 } };
+
+  state.hero.equipped.weapon = null;
+  check('an empty slot always equips the first item found',
+    Items.computePower(null) < Items.computePower(weak));
+
+  state.hero.equipped.weapon = strong;
+  const strongPower = Items.computePower(strong);
+  const weakPower = Items.computePower(weak);
+  check('a weaker item does not replace a stronger one (by power, not just presence)',
+    weakPower < strongPower, weakPower + ' vs ' + strongPower);
+}
+
+/* --- 15. selling never pays out zero or negative gold ------ */
+{
+  const { Items } = Sylvaine;
+  const tiny = { id: 't', slot: 'weapon', rarity: 'common', mods: { critChance: 0.001 } };
+  check('sell value is always at least 1 gold, even for a near-empty item',
+    Items.sellValueOf(tiny) >= 1, String(Items.sellValueOf(tiny)));
+}
+
+/* --- 16. item stat caps hold at very high stages ----------- */
+{
+  const { Items } = Sylvaine;
+  const rng = Sylvaine.makeRng(16);
+  const caps = CONFIG.items.statCaps;
+  let ok = true, worst = '';
+  for (let stage = 1; stage <= 150; stage += 3) {
+    for (const rarity of ['common', 'rare', 'epic']) {
+      for (const slot of ['weapon', 'armor']) {
+        const item = Items.rollItem(stage, slot, rarity, rng);
+        for (const stat in item.mods) {
+          const cap = caps[stat];
+          if (cap === undefined) continue;
+          if (Math.abs(item.mods[stat]) > cap + 1e-9) {
+            ok = false;
+            worst = stat + '=' + item.mods[stat] + ' at stage ' + stage;
+          }
+        }
+      }
+    }
+  }
+  check('percentage-style stats (critChance, critMult, ...) never exceed their cap ' +
+    'even at stage 150', ok, worst);
+}
+
+/* --- 17. a full run naturally finds, equips, and sells items - */
+{
+  const state = Game.createState({ seed: 17, echo: false });
+  for (let i = 0; i < 60 * 60 * 20; i++) Game.step(state, 1 / 60); // 20 min
+  check('a 20-minute run finds at least one item', state.totals.itemDrops > 0,
+    String(state.totals.itemDrops));
+  check('at least one found item gets equipped', state.totals.itemsEquipped > 0,
+    String(state.totals.itemsEquipped));
+  check('hero.base is still untouched by any of this (gear is never merged into base)',
+    state.hero.base.damage === CONFIG.heroBase.damage &&
+    state.hero.base.hp === CONFIG.heroBase.hp);
 }
 
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');

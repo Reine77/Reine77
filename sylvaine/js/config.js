@@ -95,6 +95,86 @@
       goldMult:     5.0
     },
 
+    /* ---- Items ----------------------------------------------
+       See js/items.js for what generates from this data. Kept
+       here (not in items.js) because these are the numbers
+       you'll retune once real playtesting starts — item power
+       relative to enemy HP, how often things drop, how gold
+       flows from selling.                                      */
+    items: {
+      // Chance a KILL drops something, checked once per kill.
+      dropChance: { normal: 0.15, boss: 1.0 },
+
+      // Given a drop happens, which rarity. Rows must sum to 1.
+      // Epic is 0 on normal stages ON PURPOSE — that's the rule
+      // that makes boss stages matter, not just chunkier HP.
+      rarityWeights: {
+        normal: { common: 0.85, rare: 0.15, epic: 0    },
+        boss:   { common: 0.40, rare: 0.50, epic: 0.10 }
+      },
+
+      // Every item is built from a "power budget" of points that
+      // get converted into stat values (see powerWeights below).
+      // The budget grows per stage — same shape as the enemy HP
+      // curve — so a stage-40 drop is a real upgrade over a
+      // stage-1 drop, not the same roll with a different label.
+      budget: { base: 6, growth: 1.12 },
+
+      // Rarity multiplies the WHOLE budget (not just adds a fixed
+      // amount), so a rare isn't just "common + a bit" — it's a
+      // proportionally bigger jump. This is what "big non-linear
+      // jumps" means for the equipment channel specifically.
+      rarityBudgetMult: { common: 1.0, rare: 2.5, epic: 5.0 },
+
+      // How many separate stat lines an item rolls. More lines on
+      // a higher rarity spreads the (much bigger) budget across
+      // more stats, so a rare/epic item is stronger AND more
+      // rounded, not just one huge number in one stat.
+      affixCount: { common: 1, rare: 2, epic: 3 },
+
+      // Gold refunded for auto-selling an item (either a drop that
+      // wasn't an upgrade, or gear being replaced by a better one).
+      sellGoldPerPower: 0.6,
+
+      // "Power" = points of budget per 1 unit of a stat. Used BOTH
+      // to size an item's rolled stats AND to compare two items
+      // for the auto-equip decision. This is what makes the
+      // comparison meaningful: +0.1 attackSpeed and +5 damage are
+      // both small numbers, but attackSpeed compounds multiplicatively
+      // into DPS, so it needs a much bigger weight per unit or the
+      // auto-equip logic would always prefer raw damage stats and
+      // never pick an attackSpeed item. These weights are a rough,
+      // eyeballed DPS/HP equivalence, not a precise formula — retune
+      // them if auto-equip starts making choices that feel wrong.
+      powerWeights: {
+        damage:        1,
+        attackSpeed:   50,
+        critChance:    300,
+        critMult:      80,
+        spellPower:    1,
+        spellCooldown: 40,   // per 1 second of REDUCTION
+        hp:            0.3
+      },
+
+      // Per-AFFIX ceiling on a stat's rolled value, checked before
+      // rounding. The item budget grows exponentially per stage —
+      // same shape as enemy HP — which is exactly right for damage,
+      // spellPower and hp: they have no natural ceiling, and are
+      // meant to keep producing "big non-linear jumps" forever.
+      // critChance and critMult DO have a natural ceiling (100%
+      // crit chance is already the maximum possible value), so
+      // without a cap a late-stage roll produces something like
+      // "+250% crit chance" on one affix — computeStats clamps the
+      // FINAL total so nothing breaks, but the item itself would be
+      // nonsense. Stats with no entry here are uncapped on purpose.
+      statCaps: {
+        attackSpeed:   0.6,
+        critChance:    0.20,
+        critMult:      0.50,
+        spellCooldown: 3.0   // seconds of reduction, from one affix
+      }
+    },
+
     /* ---- Combat pacing ------------------------------------- */
     combat: {
       // Fraction of max HP the hero recovers after each kill.

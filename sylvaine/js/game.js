@@ -74,7 +74,16 @@
         crits: 0,
         spellCasts: 0,
         goldEarned: 0,
-        fightsFought: 0
+        fightsFought: 0,
+
+        // Filled in by items.js's onKill hook (Phase 2). Declared
+        // here rather than lazily inside items.js so this object
+        // has one single shape from the moment the game starts —
+        // see stats.js's comment on why hero.base works the same way.
+        itemDrops: 0,
+        itemsEquipped: 0,
+        itemsSold: 0,
+        epicsFound: 0
       },
 
       // Event hooks. Later phases subscribe to these to draw
