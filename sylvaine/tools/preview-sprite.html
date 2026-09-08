@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sprite transparency check</title>
+<style>
+  :root { --bg: #14131a; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #1c1a24;
+    color: #cfc9bd;
+    font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+    gap: 1.25rem;
+  }
+  h1 { font-size: 1rem; letter-spacing: .1em; text-transform: uppercase; margin: 0; }
+  p { max-width: 42rem; text-align: center; color: #9c96a8; margin: 0; font-size: .85rem; }
+
+  #picker {
+    padding: .6rem 1rem;
+    background: #23202c;
+    border: 1px solid #322e3d;
+    border-radius: 6px;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  /* --- background swatches --- */
+  #swatches { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+  .swatch {
+    padding: .4rem .9rem;
+    border-radius: 5px;
+    border: 1px solid #322e3d;
+    font: inherit;
+    font-size: .8rem;
+    cursor: pointer;
+    color: #cfc9bd;
+  }
+  .swatch.active { outline: 2px solid #d9c169; outline-offset: 2px; }
+  .swatch[data-bg="black"] { background: #000; }
+  .swatch[data-bg="white"] { background: #fff; color: #111; }
+  .swatch[data-bg="game"]  { background: var(--bg); }
+  .swatch[data-bg="magenta"] { background: #ff00ff; color: #200020; }
+  .swatch[data-bg="checker"] {
+    background-image:
+      linear-gradient(45deg, #888 25%, transparent 25%),
+      linear-gradient(-45deg, #888 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #888 75%),
+      linear-gradient(-45deg, transparent 75%, #888 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+    background-color: #ccc;
+    color: #222;
+  }
+
+  /* --- the actual preview stage --- */
+  #stage {
+    width: min(90vw, 640px);
+    height: min(70vh, 640px);
+    border: 1px solid #322e3d;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: background-color 120ms ease-out;
+  }
+  #stage.bg-black { background: #000; }
+  #stage.bg-white { background: #fff; }
+  #stage.bg-game  { background: var(--bg); }
+  #stage.bg-magenta { background: #ff00ff; }
+  #stage.bg-checker {
+    background-image:
+      linear-gradient(45deg, #888 25%, transparent 25%),
+      linear-gradient(-45deg, #888 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #888 75%),
+      linear-gradient(-45deg, transparent 75%, #888 75%);
+    background-size: 24px 24px;
+    background-position: 0 0, 0 12px, 12px -12px, -12px 0px;
+    background-color: #ccc;
+  }
+
+  #stage img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: none;
+  }
+  #placeholder { color: #6f6a7d; font-size: .85rem; text-align: center; padding: 1rem; }
+
+  #verdict {
+    font-size: .8rem;
+    min-height: 1.4em;
+    text-align: center;
+  }
+  #verdict.ok { color: #7fbfa0; }
+  #verdict.bad { color: #c05a5a; }
+</style>
+</head>
+<body>
+
+  <h1>Sprite transparency check</h1>
+  <p>
+    Pick a PNG from your computer. Nothing is uploaded anywhere — this reads
+    the file locally in your browser only. Flip between backgrounds below;
+    if the checkerboard pattern from your editor is actually part of the
+    image (not real transparency), you'll see it as a literal grey/white
+    grid painted behind her on every background here, not just on
+    "checkerboard."
+  </p>
+
+  <input type="file" id="picker" accept="image/png,image/webp,image/gif">
+
+  <div id="swatches">
+    <button class="swatch active" data-bg="black">Black</button>
+    <button class="swatch" data-bg="white">White</button>
+    <button class="swatch" data-bg="game">Game background</button>
+    <button class="swatch" data-bg="magenta">Magenta</button>
+    <button class="swatch" data-bg="checker">Checkerboard</button>
+  </div>
+
+  <div id="stage" class="bg-black">
+    <div id="placeholder">No file selected yet.</div>
+    <img id="preview" alt="">
+  </div>
+
+  <div id="verdict"></div>
+
+  <script>
+    var picker = document.getElementById('picker');
+    var stage = document.getElementById('stage');
+    var img = document.getElementById('preview');
+    var placeholder = document.getElementById('placeholder');
+    var verdict = document.getElementById('verdict');
+    var swatches = document.querySelectorAll('.swatch');
+
+    swatches.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        swatches.forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        stage.className = 'bg-' + btn.dataset.bg;
+      });
+    });
+
+    picker.addEventListener('change', function () {
+      var file = picker.files[0];
+      if (!file) return;
+
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        placeholder.style.display = 'none';
+        img.style.display = 'block';
+        checkAlpha(img);
+      };
+      img.src = url;
+    });
+
+    // Reads the actual pixel data and reports whether the file has any
+    // real transparency at all — a quick automated sanity check on top
+    // of the eyeball test. Doesn't tell you if the CUTOUT is clean
+    // (that still needs your eyes across a few backgrounds), only
+    // whether the alpha channel is doing anything whatsoever.
+    function checkAlpha(imageEl) {
+      var canvas = document.createElement('canvas');
+      canvas.width = imageEl.naturalWidth;
+      canvas.height = imageEl.naturalHeight;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(imageEl, 0, 0);
+
+      var data;
+      try {
+        data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      } catch (e) {
+        verdict.textContent = "Couldn't read pixel data (unusual — try a different browser).";
+        verdict.className = 'bad';
+        return;
+      }
+
+      var transparentPixels = 0;
+      var totalPixels = data.length / 4;
+      for (var i = 3; i < data.length; i += 4) {
+        if (data[i] < 250) transparentPixels++; // alpha channel, byte i
+      }
+      var pct = (transparentPixels / totalPixels) * 100;
+
+      if (pct < 0.5) {
+        verdict.textContent = 'No meaningful transparency detected (' + pct.toFixed(2) +
+          '% of pixels). This file is very likely fully opaque — the checker pattern is baked into the pixels, not real alpha.';
+        verdict.className = 'bad';
+      } else {
+        verdict.textContent = 'Real transparency detected: ' + pct.toFixed(1) +
+          '% of pixels have a non-opaque alpha value. Now check it looks clean across all 5 backgrounds above.';
+        verdict.className = 'ok';
+      }
+    }
+  </script>
+</body>
+</html>
