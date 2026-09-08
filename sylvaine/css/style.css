@@ -26,6 +26,17 @@
 
 * { box-sizing: border-box; }
 
+/* The `hidden` HTML attribute is meant to force an element off the
+   page — the browser does that via its OWN built-in stylesheet
+   ([hidden] { display: none }). But author CSS always outranks
+   that built-in default, so ANY of our own rules that set
+   `display` on a hideable element (like .boss-badge below) quietly
+   wins over `hidden` and the element stays visible no matter what
+   JS sets el.hidden to. This is that exact bug, fixed globally:
+   `!important` here guarantees `hidden` always wins, everywhere,
+   rather than patching it one class at a time. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   min-height: 100vh;
