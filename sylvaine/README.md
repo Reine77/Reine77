@@ -583,18 +583,18 @@ and a neutral one, which stays exactly `0.7×` either way.
 ### Where the multiplier actually gets applied
 
 Baked directly into `computeStats`'s `damage`/`spellPower` output — not into
-`game.js`'s damage-dealing code — by looking up `CONFIG.attributes.basicAttack`
-/`.spell` (which attribute each source currently carries) at compute time.
-That one decision means `heroDps`/`canWin` (the retreat gate), the actual
-damage dealt in combat, and the stat panel display all automatically agree,
-since all three already read `s.damage`/`s.spellPower` from the same cached
-`computeStats` result — zero changes needed anywhere else.
+`game.js`'s damage-dealing code — by looking up which attribute each source
+currently carries at compute time. That one decision means `heroDps`/`canWin`
+(the retreat gate), the actual damage dealt in combat, and the stat panel
+display all automatically agree, since all three already read
+`s.damage`/`s.spellPower` from the same cached `computeStats` result — zero
+changes needed anywhere else.
 
-The tradeoff: this couples `stats.js` to those two CONFIG fields being
-globally fixed, which they are *today*. Once the rune tree rework lets her
-choose an element for her own attacks (step 3), that lookup needs to become
-per-hero instead of config-wide — flagged directly in the code comment where
-it'll need to change.
+At the time this was written, that lookup read `CONFIG.attributes.basicAttack`
+/`.spell` — two globally-fixed constants, since nothing could yet change her
+attack's element. Step 3 (below) is exactly the change that couples this to
+the hero instead: `hero.attackAttribute`/`hero.spellAttribute`, mutable, so a
+rune conversion node can actually move the needle here.
 
 ### Current state: inert, on purpose
 
@@ -609,6 +609,151 @@ leak" negative cases — magic doesn't boost physical, an unrelated element
 doesn't boost the wrong spell), `hpPercent`/`attackSpeedPercent`, flat+percent
 composing correctly on one item, the existing unknown-key warning still
 firing, and the percent-bonus/resistance separation above.
+
+## Rune tree rework (step 3 of the build-strategy rework)
+
+Where the previous two steps were pure plumbing (attributes existed but
+nothing used them meaningfully; percent mods existed but nothing generated
+them), this is the step that turns the rune tree into the actual decision
+the earlier steps were building toward. The tree is re-themed around two
+identities — **physical** (attackSpeed/critChance/critMult, plus two new
+defensive stats) and **magic** (spellPower/spellCooldown, plus a new heal) —
+each with exactly one elemental "conversion" capstone, on a hybrid bridge
+that stays orthogonal to both.
+
+### Why conversion, not sprinkled bonus nodes
+
+The original plan (from the user's spec) was to "sprinkle in 1-2 elemental
+skills" per tree. The naive version of that — a flat `+15% fire damage` node
+sitting in the physical tree — would be a **dead pick**: her attack starts
+`physical` and stays `physical` unless something else changes it, so a fire%
+bonus does nothing until some other node (which doesn't exist) makes her
+deal fire damage. That's a trap disguised as a choice.
+
+The fix: make the elemental node **convert** the damage source's attribute
+outright, and grant that element's own damage% bucket in the *same* node
+(`{ mods: { earthDamagePercent: 0.15 }, convertsAttackTo: 'earth' }`). Buying
+it is the moment it starts mattering — never a bet on some other node
+existing. It also sidesteps needing any "mutually exclusive node" machinery:
+with exactly one conversion target per tree, there's no "which of several
+elemental picks do I take" to arbitrate.
+
+- **physical tree → earth.** Capstone `phys_6` ("Avalanche Strike") converts
+  her basic attack to earth. Matches the spec's "mostly physical and earth."
+- **magic tree → fire.** Capstone `magic_6` ("Wyrmfire Communion") converts
+  her spell to fire. The spec called this "the rest" of the elements (fire/
+  dark/holy were all viable; fire was picked as the flavor) — her spell
+  already starts as `wind` by default, so the magic tree was already
+  elemental before this step; the capstone is a second, deliberate elemental
+  choice on top.
+- **The one sprinkle that needed no conversion**: `magic_5` ("Battle Focus")
+  is a flat `physicalDamagePercent` bonus sitting in the *magic* tree. It
+  isn't dead on arrival the way a naive elemental sprinkle would be, because
+  her basic attack is `physical` **by default** — a caster who never touches
+  `phys_6` still gets a live bonus to her still-physical sword arm from the
+  moment she buys it. This is the one place the spec's "sprinkle physical/
+  earth back into magic" request could be satisfied for free.
+
+Conversion is **permanent, no refund** — same one-way-door convention as
+`unlocksSpell`/`unlocksHeal`. `hero.attackAttribute`/`hero.spellAttribute`
+now live on the hero (not `CONFIG`), initialized from
+`CONFIG.attributes.defaultAttackAttribute`/`defaultSpellAttribute` in
+`makeHero()`, and every attribute lookup in `game.js`/`stats.js` reads the
+hero's field instead of the old config constant.
+
+### The survival skill: heal, placed early
+
+The spec asked for "a survival skill like heal in magic early tree." `magic_3`
+("Mending Light") sits one purchase deep — a direct sibling of the
+spell-unlock node, not buried at the end — and gates `hero.healUnlocked` the
+same way `magic_1` gates `hero.spellUnlocked`. The heal is a **third,
+completely independent timer** (`hero.timers.heal`, ticked in `tickHero`
+alongside attack and spell) rather than a rider on either existing clock —
+same reasoning that already applied to keeping attack and spell separate:
+"heal every Nth swing" would make `attackSpeed` upgrades passively buff
+survival too, which isn't the story attackSpeed is supposed to tell.
+
+Like the spell, the heal timer is **not reset when a new fight begins** — a
+free heal every spawn would trivialize the attrition system that is the
+game's actual difficulty (`combat.healOnKill`'s partial top-up). It keeps
+ticking across fights, same as `spellUnlocked`'s timer always has.
+
+### The defensive stats: evade and damage reduction
+
+The spec asked for "more defense related skill in physical (evade, damage
+reduction)" — two new flat stats, `evadeChance` and `damageReduction`, both
+0..1, both **flat-only** (no `*Percent` counterpart) for the same reason
+`critChance`/`critMult` are: "+5% evade chance" reads as +0.05 additive, not
+as a multiplier of itself.
+
+Both are **hard-capped** (`CONFIG.caps.evadeChance = 0.5`,
+`damageReduction = 0.5`) — uncapped, either alone could reach 100% and make
+her functionally unkillable, which would turn off the entire retreat/
+attrition system that is the game's real difficulty curve. In `enemyAttack`,
+evade is rolled first (a fully-avoided hit skips damage reduction entirely —
+zero is zero), and only a hit that lands gets shaved by damage reduction.
+
+### Folding all three into the winnability check
+
+`canWin`'s time-to-die math previously only knew about raw enemy DPS. It now
+folds in the full defensive picture on the incoming side:
+
+```
+effectiveEnemyDps = max(0, rawEnemyDps * (1 - evadeChance) * (1 - damageReduction) - healPerSecond)
+```
+
+A build that heals faster than it takes damage reads as `ttd = Infinity` —
+correctly "unkillable," not just "survives a bit longer." This is what makes
+`phys_3`/`phys_5` (evade/DR) and `magic_3` (heal) real alternatives to raw
+offense for getting past a wall, not just quality-of-life padding.
+
+### A real bug this step exposed (not introduced)
+
+Re-running `tools/checks.mjs` after wiring the RNG-consuming evade roll into
+`enemyAttack` broke a previously-passing test — "she climbs again after
+release" — with `highestNormalCleared` measurably *decreasing* over a run
+(38 → 33), which should be impossible; it's meant to be monotonic.
+
+Root cause, found by tracing kill/retreat events rather than guessing:
+`advance()`'s normal-climb branch did `state.highestNormalCleared =
+state.stage` — an **unconditional overwrite**, not a "raise the high-water
+mark" `Math.max`. That's harmless during a simple linear climb (`state.stage`
+only ever goes up one at a time in that branch) but breaks the moment a
+chain-retreat resumes her automatic farming at a `blockedStage` *below* a
+stage she'd already reached earlier in the same run — the next normal kill
+would silently drag her recorded frontier back down with it, which quietly
+re-triggers the XP/gold outleveled-content falloff on stages she'd already
+earned full credit for, and could even block `canFarmStage` on ground she'd
+legitimately cleared.
+
+This bug pre-dated step 3 — extending `canWin` to normal stages (an earlier
+piece of work) is what made chain-retreats on non-boss stages possible in
+the first place. It just happened not to trigger for any seed the existing
+test suite's RNG streams hit, until step 3's new `state.rng.chance()` call
+in `enemyAttack` shifted every subsequent random draw for every seed. Fixed
+with `Math.max(state.highestNormalCleared, state.stage)`; a check already
+covers the invariant (the "she climbs again after release" test, now
+guaranteed to fail loudly again if this regresses).
+
+### Budget preservation, verified
+
+The tree grew from 4+4 nodes (blade/arcane) to 6+6 (physical/magic), by
+design **preserving the same base-cost sum per branch** (2600 each, same as
+before) so the level-100 "one branch maxed, ~1.15× leftover" calibration
+wouldn't need to move. Re-ran `tools/balance.mjs --branch physical` and
+`--branch magic` after the rework: **1.16×** for both, unchanged within
+rounding, and physical/magic still cost identically to max (353,221 vs.
+353,220 gold) — confirming the "the choice is playstyle, not price"
+invariant survived the re-theme.
+
+`tools/checks.mjs` grew from 148 to 176 assertions: the heal gate and its
+independent clock, evade fully negating a hit, damage reduction shaving one
+that lands (both against their configured caps), both conversion capstones
+(inert before purchase, permanent and bucket-correct after), the magic
+tree's physical sprinkle being live with zero conversions bought, `canWin`
+correctly flipping a losing matchup to winning once evade/DR/heal are
+present, the branch base-cost budget staying at 2600 each, and every
+existing blade/arcane-named test renamed to physical/magic in place.
 
 ## Phase plan
 

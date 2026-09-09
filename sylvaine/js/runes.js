@@ -22,14 +22,54 @@
      tree later (Phase 6 walks `requires` to draw the lines).
 
    THE SPELL GATE
-     Before any arcane rune, hero.spellUnlocked is false and
+     Before any magic rune, hero.spellUnlocked is false and
      game.js's tickHero never even looks at the spell timer —
      she doesn't almost-have a spell, she has no spell. The
-     first arcane node purchased (arcane_1, flagged
+     first magic node purchased (magic_1, flagged
      `unlocksSpell: true` below) flips that flag permanently.
-     Every later arcane/hybrid node just adds spellPower or
+     Every later magic/hybrid node just adds spellPower or
      shaves spellCooldown on top of an ability that already
-     exists.
+     exists. The same pattern gates the heal (`unlocksHeal`,
+     see magic_3) — no half-existing ability, a flag flip and
+     then a real one.
+
+   TWO TREES, RE-THEMED AROUND PHYSICAL vs MAGIC + ELEMENT
+     `physical` is mostly attackSpeed/critChance/critMult plus the
+     two defensive stats (evadeChance, damageReduction) — a build
+     that leans into surviving and hitting fast/hard with her
+     sword. `magic` is spellPower/spellCooldown plus the heal —
+     a build that leans into the spell and staying alive through
+     healing rather than not-getting-hit. Both trees also carry
+     exactly ONE "elemental" node: a capstone that PERMANENTLY
+     converts her attack (physical tree) or spell (magic tree) to
+     a new element and grants that element's own damage% bonus in
+     the same node.
+
+     Why a CONVERSION rather than just sprinkling in a stray
+     `+X% fire damage` node: her attack starts physical and her
+     spell starts wind. A flat "+15% fire damage" node would be
+     completely inert until something else made her deal fire
+     damage — a dead pick with no story. Converting the damage
+     source's element AND granting that element's bucket bonus in
+     the same purchase means the node is never inert: buying it is
+     the moment it starts mattering, not a bet on some other node.
+     It's also why there's only ONE such node per tree — with a
+     single conversion target there's no "which of several
+     elemental picks do I take", so no mutually-exclusive-node
+     machinery is needed here at all.
+
+     physical tree converts her attack to EARTH (capstone:
+     Avalanche Strike) — the tree is themed physical+earth per
+     design, and earth is the one element sprinkled in.
+     magic tree converts her spell to FIRE (capstone: Wyrmfire
+     Communion) — magic gets "the rest" of the elements (fire,
+     dark, holy are all viable reskins; fire was picked as the
+     flavour). magic also sprinkles a LITTLE physical/earth back
+     the other way (magic_5, Battle Focus) — but that one does NOT
+     need a conversion, because her attack is physical BY DEFAULT,
+     so a `physicalDamagePercent` node is a live bonus to her
+     basic attack from turn one, useful even to a caster who never
+     converts anything.
    ============================================================= */
 (function (root) {
   'use strict';
@@ -42,31 +82,60 @@
      items — this is a small, fixed, designed tree, not an
      endless procedural system. Retune costs/mods here directly. */
   var NODES = [
-    // ---- blade branch: attackSpeed, critChance, critMult ----
+    // ---- physical branch: attackSpeed/critChance/critMult, plus
+    // the two defensive stats (evade, damage reduction), plus one
+    // elemental capstone (converts her attack to earth). Base
+    // costs sum to 2600, same total the old 4-node blade branch
+    // used — the level-100 "afford one branch" calibration in
+    // README doesn't have to move just because there are now 6
+    // nodes splitting that budget instead of 4.
     {
-      id: 'blade_1', branch: 'blade', name: 'Quick Step',
+      id: 'phys_1', branch: 'physical', name: 'Quick Step',
       cost: 150, requires: [],
       mods: { attackSpeed: 0.08 }
     },
     {
-      id: 'blade_2', branch: 'blade', name: "Fencer's Eye",
-      cost: 350, requires: ['blade_1'],
+      id: 'phys_2', branch: 'physical', name: "Fencer's Eye",
+      cost: 300, requires: ['phys_1'],
       mods: { critChance: 0.03 }
     },
     {
-      id: 'blade_3', branch: 'blade', name: 'Killing Stroke',
-      cost: 700, requires: ['blade_2'],
+      id: 'phys_3', branch: 'physical', name: 'Sidestep',
+      cost: 300, requires: ['phys_1'],
+      // Defensive line the old tree didn't have at all — see the
+      // "more defense related skill in physical" request. evade is
+      // a flat chance, same convention as critChance: a stated
+      // percentage reads as additive, not multiplicative-of-itself.
+      mods: { evadeChance: 0.03 }
+    },
+    {
+      id: 'phys_4', branch: 'physical', name: 'Killing Stroke',
+      cost: 550, requires: ['phys_2'],
       mods: { critMult: 0.15 }
     },
     {
-      id: 'blade_4', branch: 'blade', name: 'Whirlwind Guard',
-      cost: 1400, requires: ['blade_3'],
-      mods: { attackSpeed: 0.12, critChance: 0.02 }
+      id: 'phys_5', branch: 'physical', name: 'Stone Skin',
+      cost: 550, requires: ['phys_3'],
+      mods: { damageReduction: 0.05 }
+    },
+    {
+      id: 'phys_6', branch: 'physical', name: 'Avalanche Strike',
+      cost: 750, requires: ['phys_4', 'phys_5'],
+      // The physical tree's one elemental pick. Permanently
+      // converts her BASIC ATTACK to earth and grants earth's own
+      // damage% bucket in the same node, so it's never a dead pick
+      // — see the file header on why conversion+bucket are bundled.
+      mods: { earthDamagePercent: 0.15 },
+      convertsAttackTo: 'earth'
     },
 
-    // ---- arcane branch: spellPower, spellCooldown reduction -
+    // ---- magic branch: spellPower/spellCooldown, plus the heal
+    // (the "survival skill", placed EARLY per the design request),
+    // plus one elemental capstone (converts her spell to fire) and
+    // one physical/earth sprinkle-back node. Base costs also sum
+    // to 2600.
     {
-      id: 'arcane_1', branch: 'arcane', name: "Aldreth's First Lesson",
+      id: 'magic_1', branch: 'magic', name: "Aldreth's First Lesson",
       cost: 175, requires: [],
       mods: { spellPower: 6 },
       // This is the ONE line that turns the spell on. See the
@@ -75,33 +144,58 @@
       unlocksSpell: true
     },
     {
-      id: 'arcane_2', branch: 'arcane', name: 'Steady Hand',
-      cost: 375, requires: ['arcane_1'],
+      id: 'magic_2', branch: 'magic', name: 'Steady Hand',
+      cost: 300, requires: ['magic_1'],
       // Stored as a NEGATIVE mod on spellCooldown — the affix
       // fluff is "0.6s off your cooldown", the mod is -0.6.
       // Same convention items.js uses for the same stat.
       mods: { spellCooldown: -0.6 }
     },
     {
-      id: 'arcane_3', branch: 'arcane', name: 'Deep Well',
-      cost: 700, requires: ['arcane_2'],
+      id: 'magic_3', branch: 'magic', name: 'Mending Light',
+      cost: 300, requires: ['magic_1'],
+      // The survival skill — sits right next to the spell-unlock
+      // node (one purchase deep), not buried at the end of the
+      // tree, per the "heal early in magic tree" request.
+      mods: { healPower: 8 },
+      unlocksHeal: true
+    },
+    {
+      id: 'magic_4', branch: 'magic', name: 'Deep Well',
+      cost: 550, requires: ['magic_2'],
       mods: { spellPower: 10 }
     },
     {
-      id: 'arcane_4', branch: 'arcane', name: 'Rune-Scarred',
-      cost: 1350, requires: ['arcane_3'],
-      mods: { spellCooldown: -0.8, spellPower: 6 }
+      id: 'magic_5', branch: 'magic', name: 'Battle Focus',
+      cost: 550, requires: ['magic_3'],
+      // The magic tree's physical/earth sprinkle-back. No
+      // conversion needed here — her basic attack is physical BY
+      // DEFAULT, so this is a live bonus from the moment it's
+      // bought, useful even to a caster who never touches phys_6.
+      mods: { physicalDamagePercent: 0.10 }
+    },
+    {
+      id: 'magic_6', branch: 'magic', name: 'Wyrmfire Communion',
+      cost: 725, requires: ['magic_4', 'magic_5'],
+      // The magic tree's one elemental pick. Permanently converts
+      // her SPELL to fire and grants fire's own damage% bucket in
+      // the same node — same conversion+bucket bundling as phys_6.
+      mods: { fireDamagePercent: 0.15 },
+      convertsSpellTo: 'fire'
     },
 
-    // ---- hybrid: needs nodes from BOTH branches --------------
+    // ---- hybrid: needs nodes from BOTH branches. Deliberately
+    // requires the mid-tree stat nodes (not the elemental
+    // capstones), so taking hybrid never forces an elemental
+    // conversion — it stays orthogonal to that choice.
     {
       id: 'hybrid_1', branch: 'hybrid', name: 'Spellblade Stance',
-      cost: 1200, requires: ['blade_2', 'arcane_2'],
+      cost: 1200, requires: ['phys_2', 'magic_2'],
       mods: { attackSpeed: 0.05, spellPower: 5 }
     },
     {
       id: 'hybrid_2', branch: 'hybrid', name: "Bastard's Reckoning",
-      cost: 3000, requires: ['blade_4', 'arcane_4', 'hybrid_1'],
+      cost: 3000, requires: ['phys_4', 'magic_4', 'hybrid_1'],
       mods: { critMult: 0.2, spellPower: 15, attackSpeed: 0.1, spellCooldown: -0.5 }
     }
   ];
@@ -220,9 +314,32 @@
       justUnlockedSpell = true;
     }
 
+    var justUnlockedHeal = false;
+    if (node.unlocksHeal && !hero.healUnlocked) {
+      hero.healUnlocked = true;
+      hero.timers.heal = Sylvaine.Stats.computeStats(hero).healCooldown;
+      justUnlockedHeal = true;
+    }
+
+    // Attribute conversion: permanently overwrites the hero's own
+    // field. No refund, no going back — see the file header on why
+    // this is bundled with a damage% bucket in the same node rather
+    // than being its own separate pick.
+    var convertedNote = '';
+    if (node.convertsAttackTo && hero.attackAttribute !== node.convertsAttackTo) {
+      hero.attackAttribute = node.convertsAttackTo;
+      convertedNote = ' Her attack is now ' + node.convertsAttackTo + '.';
+    }
+    if (node.convertsSpellTo && hero.spellAttribute !== node.convertsSpellTo) {
+      hero.spellAttribute = node.convertsSpellTo;
+      convertedNote = ' Her spell is now ' + node.convertsSpellTo + '.';
+    }
+
     state.log.push('rune', 'Purchased "' + node.name + '" rank ' + hero.runes[id] +
       '/' + MAX_RANK + ' [' + node.branch + '] for ' + cost + ' gold.' +
-      (justUnlockedSpell ? ' The spell is unlocked.' : ''), state.time);
+      (justUnlockedSpell ? ' The spell is unlocked.' : '') +
+      (justUnlockedHeal ? ' The heal is unlocked.' : '') +
+      convertedNote, state.time);
     return true;
   }
 

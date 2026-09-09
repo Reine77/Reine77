@@ -106,10 +106,14 @@
       enemyTags:     document.getElementById('enemyTags'),
 
       statDamage:  document.getElementById('statDamage'),
+      statAttackAttr: document.getElementById('statAttackAttr'),
       statSpeed:   document.getElementById('statSpeed'),
       statCrit:    document.getElementById('statCrit'),
       statDps:     document.getElementById('statDps'),
       statSpell:   document.getElementById('statSpell'),
+      statEvade:   document.getElementById('statEvade'),
+      statReduc:   document.getElementById('statReduc'),
+      statHeal:    document.getElementById('statHeal'),
       gearLine:    document.getElementById('gearLine'),
 
       farmStatus:  document.getElementById('farmStatus'),
@@ -618,11 +622,18 @@
 
       // ---- hero stats ----
       el.statDamage.textContent = s.damage.toFixed(1);
+      el.statAttackAttr.textContent = hero.attackAttribute;
       el.statSpeed.textContent = s.attackSpeed.toFixed(2) + '/s';
       el.statCrit.textContent = (s.critChance * 100).toFixed(1) + '% x' + s.critMult.toFixed(2);
       el.statDps.textContent = Math.round(Sylvaine.Game.heroDps(state));
       el.statSpell.textContent = hero.spellUnlocked
-        ? s.spellPower.toFixed(1) + ' pwr / ' + s.spellCooldown.toFixed(1) + 's cd'
+        ? s.spellPower.toFixed(1) + ' pwr / ' + s.spellCooldown.toFixed(1) + 's cd (' +
+          hero.spellAttribute + ')'
+        : 'locked';
+      el.statEvade.textContent = (s.evadeChance * 100).toFixed(1) + '%';
+      el.statReduc.textContent = (s.damageReduction * 100).toFixed(1) + '%';
+      el.statHeal.textContent = hero.healUnlocked
+        ? s.healPower.toFixed(1) + ' / ' + s.healCooldown.toFixed(1) + 's'
         : 'locked';
 
       var eq = hero.equipped;

@@ -405,7 +405,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
    own column widths from only its own content (branch/cost/status/
    button natural sizes for THAT row alone). Since `.rune-status`'s
    text length varies hugely row to row ("not enough gold (need
-   150, have 17)" vs "missing prerequisite(s): blade_2, arcane_2"),
+   150, have 17)" vs "missing prerequisite(s): phys_2, magic_2"),
    each row would still size its own name/cost columns differently
    — which is exactly what was happening with flexbox, and grid
    alone doesn't fix it without one more step.
@@ -443,8 +443,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
   border: 1px solid var(--border);
   color: var(--text-dim);
 }
-.rune-row.branch-blade .rune-branch { color: var(--enemy); border-color: var(--enemy-dim); }
-.rune-row.branch-arcane .rune-branch { color: #7ab0d9; border-color: #2f4f66; }
+.rune-row.branch-physical .rune-branch { color: var(--enemy); border-color: var(--enemy-dim); }
+.rune-row.branch-magic .rune-branch { color: #7ab0d9; border-color: #2f4f66; }
 .rune-row.branch-hybrid .rune-branch { color: var(--gold); border-color: #6b5c2a; }
 
 .rune-row .rune-rank { color: var(--text-dim); min-width: 2.6em; text-align: left; }

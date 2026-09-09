@@ -32,8 +32,12 @@
       attackSpeed:   1.2,   // attacks per second
       critChance:    0.05,  // 0..1
       critMult:      1.75,  // damage multiplier on a crit
-      spellPower:    0,     // 0 until the arcane tree unlocks it (Phase 3)
-      spellCooldown: 6.0    // seconds between casts
+      spellPower:    0,     // 0 until the magic tree unlocks it
+      spellCooldown: 6.0,   // seconds between casts
+      evadeChance:     0,   // 0..1, chance to take zero damage from a hit
+      damageReduction: 0,   // 0..1, fraction shaved off hits that land
+      healPower:       0,   // 0 until the magic tree unlocks it
+      healCooldown:   10.0  // seconds between heals
     },
 
     /* ---- Per-level growth ----------------------------------
@@ -53,7 +57,22 @@
        tick and hang the browser.                              */
     floors: {
       attackSpeed:   0.1,
-      spellCooldown: 0.5
+      spellCooldown: 0.5,
+      healCooldown:  1.0
+    },
+
+    /* ---- Hard caps ------------------------------------------
+       Unlike the floors above (which stop a stat reaching an
+       unusable extreme), these stop a stat reaching a BROKEN one.
+       evadeChance/damageReduction are both "fraction of hits that
+       do nothing" in different ways — uncapped, either one alone
+       could reach 100% and make her unkillable, which would turn
+       the whole retreat/attrition system (the actual difficulty
+       of this game) off. Capping well under 1.0 keeps stacking
+       both still short of true invulnerability.               */
+    caps: {
+      evadeChance:     0.5,
+      damageReduction: 0.5
     },
 
     /* ---- XP curve ------------------------------------------
@@ -143,12 +162,16 @@
       resistMult: 0.7,  // enemy resists it -> less damage
       neutralMult: 1.0,
 
-      // What the hero's two damage sources currently count as.
-      // Nothing can change these yet — the rune rework is what
-      // will let her spec into fire/dark/holy and so on. Kept in
-      // config so that change is a data edit, not a code hunt.
-      basicAttack: 'physical',
-      spell:       'wind'
+      // STARTING attributes for a fresh hero — copied onto
+      // hero.attackAttribute/spellAttribute in makeHero(), then
+      // owned by the hero from that point on, not read from here
+      // again. This used to BE the live value (a global constant
+      // no rune could touch); the rune tree rework is what turns
+      // it into a real per-hero choice — buying a conversion node
+      // (see runes.js's `convertsAttackTo`/`convertsSpellTo`)
+      // overwrites the hero's own field, permanently, no refund.
+      defaultAttackAttribute: 'physical',
+      defaultSpellAttribute:  'wind'
     },
 
     /* ---- Runes ----------------------------------------------

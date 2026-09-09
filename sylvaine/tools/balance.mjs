@@ -10,8 +10,8 @@
    playthrough would see.
 
    Usage:
-     node tools/balance.mjs                     # default: max blade
-     node tools/balance.mjs --branch arcane
+     node tools/balance.mjs                     # default: max physical
+     node tools/balance.mjs --branch magic
      node tools/balance.mjs --days 5 --hz 30
      node tools/balance.mjs --nobuy             # spend nothing
 
@@ -40,7 +40,7 @@ function flag(name, fallback) {
   return isNaN(Number(next)) ? next : Number(next);
 }
 
-const branch  = String(flag('branch', 'blade'));
+const branch  = String(flag('branch', 'physical'));
 const days    = Number(flag('days', 4));
 const hz      = Number(flag('hz', 30));
 const seed    = Number(flag('seed', 777));
@@ -53,8 +53,8 @@ const quiet   = flag('quiet', false) === true;
    optimises better, so this is a conservative floor rather than a
    best case.
 
-   `arcane_1` is bought regardless of branch when the target is
-   arcane; for a blade run nothing outside blade is ever bought,
+   `magic_1` is bought regardless of branch when the target is
+   magic; for a physical run nothing outside physical is ever bought,
    which is exactly the "max ONE tree" case being calibrated.  */
 function buyStep(state) {
   if (noBuy) return;
@@ -112,8 +112,8 @@ for (let i = 0; i < totalSteps; i++) {
 
 /* ---- report -------------------------------------------------- */
 const branchCosts = {
-  blade: Runes.branchCost('blade'),
-  arcane: Runes.branchCost('arcane'),
+  physical: Runes.branchCost('physical'),
+  magic: Runes.branchCost('magic'),
   hybrid: Runes.branchCost('hybrid')
 };
 const wholeTree = Runes.NODES.reduce((s, n) => s + Runes.fullCostOf(n.id), 0);
@@ -149,7 +149,7 @@ console.log({
 console.log('\n--- calibration target ---');
 console.log('cost to max one branch:', branchCosts);
 console.log('cost to max WHOLE tree:', wholeTree);
-const cheapest = Math.min(branchCosts.blade, branchCosts.arcane);
+const cheapest = Math.min(branchCosts.physical, branchCosts.magic);
 if (goldAtCap === null) {
   console.log('never reached the level cap — cannot measure the target ratio');
 } else {

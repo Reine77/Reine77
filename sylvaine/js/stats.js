@@ -62,7 +62,8 @@
   // adding a new stat later is a one-line change.
   var STAT_KEYS = [
     'hp', 'damage', 'attackSpeed', 'critChance',
-    'critMult', 'spellPower', 'spellCooldown'
+    'critMult', 'spellPower', 'spellCooldown',
+    'evadeChance', 'damageReduction', 'healPower', 'healCooldown'
   ];
 
   // Percent-modifier keys. Deliberately a SEPARATE namespace from
@@ -83,7 +84,7 @@
     .map(function (a) { return a + 'DamagePercent'; });
 
   var PERCENT_KEYS = ['damagePercent', 'physicalDamagePercent', 'magicDamagePercent',
-    'hpPercent', 'attackSpeedPercent'].concat(ELEMENTAL_PERCENT_KEYS);
+    'hpPercent', 'attackSpeedPercent', 'healPercent'].concat(ELEMENTAL_PERCENT_KEYS);
 
   function makeHero() {
     return {
@@ -99,12 +100,20 @@
 
       // ---- runtime combat state ----
       hp: CONFIG.heroBase.hp, // current HP; maxHp comes from stats.hp
-      timers: { attack: 0, spell: 0 },
+      timers: { attack: 0, spell: 0, heal: 0 },
 
       // ---- power sources (filled in by later phases) ----
       equipped: { weapon: null, armor: null }, // Phase 2
       runes: {},                               // rune id -> rank owned (1..maxRank)
-      spellUnlocked: false,                    // flipped by the first arcane rune
+      spellUnlocked: false,                    // flipped by the first magic rune
+      healUnlocked: false,                     // flipped by the first heal rune
+
+      // Which element her basic attack / spell currently deal. Start
+      // from CONFIG's defaults, then live entirely on the hero from
+      // here on — a rune "conversion" node permanently overwrites
+      // one of these (see runes.js's convertsAttackTo/convertsSpellTo).
+      attackAttribute: CONFIG.attributes.defaultAttackAttribute,
+      spellAttribute: CONFIG.attributes.defaultSpellAttribute,
 
       // ---- stat cache ----
       _stats: null,
@@ -174,24 +183,26 @@
     //    damage/spellPower carries, since damage% bonuses are
     //    bucketed by attribute — see damagePercentFor().
     //
-    //    Reads CONFIG.attributes.basicAttack/spell rather than
-    //    something on the hero: today those are fixed globally
-    //    (the rune tree can't yet let her choose an element for her
-    //    own attacks — that's the next step of this rework). When
-    //    it can, this becomes hero-specific instead of config-wide,
-    //    and this is the one place that will need to change.
+    //    Reads hero.attackAttribute/spellAttribute — these live on
+    //    the hero (not CONFIG) precisely so a rune conversion node
+    //    can change them permanently and have it reflected here.
     out.hp         *= (1 + (pct.hpPercent || 0));
     out.attackSpeed *= (1 + (pct.attackSpeedPercent || 0));
-    out.damage      *= (1 + damagePercentFor(pct, CONFIG.attributes.basicAttack));
-    out.spellPower   *= (1 + damagePercentFor(pct, CONFIG.attributes.spell));
+    out.damage      *= (1 + damagePercentFor(pct, hero.attackAttribute));
+    out.spellPower   *= (1 + damagePercentFor(pct, hero.spellAttribute));
+    out.healPower    *= (1 + (pct.healPercent || 0));
 
     // 6. Clamp. Reductions must not produce a zero or negative
     //    interval — see the comment in config.js floors.
     out.attackSpeed   = Math.max(CONFIG.floors.attackSpeed,   out.attackSpeed);
     out.spellCooldown = Math.max(CONFIG.floors.spellCooldown, out.spellCooldown);
+    out.healCooldown  = Math.max(CONFIG.floors.healCooldown,  out.healCooldown);
     out.critChance    = Math.min(1, Math.max(0, out.critChance));
+    out.evadeChance     = Math.min(CONFIG.caps.evadeChance,     Math.max(0, out.evadeChance));
+    out.damageReduction = Math.min(CONFIG.caps.damageReduction, Math.max(0, out.damageReduction));
     out.hp            = Math.max(1, out.hp);
     out.damage        = Math.max(0, out.damage);
+    out.healPower      = Math.max(0, out.healPower);
 
     // 7. Derived, convenience values. Computed once here rather
     //    than divided out every tick in the combat code.

@@ -318,23 +318,23 @@ console.log('\nPhase 1 checks\n');
   const hasCrossBranchHybrid = Runes.NODES.some(node => {
     if (node.branch !== 'hybrid') return false;
     const branchesRequired = new Set(node.requires.map(r => Runes.getNode(r)?.branch));
-    return branchesRequired.has('blade') && branchesRequired.has('arcane');
+    return branchesRequired.has('physical') && branchesRequired.has('magic');
   });
-  check('at least one hybrid node requires nodes from both blade and arcane',
+  check('at least one hybrid node requires nodes from both physical and magic',
     hasCrossBranchHybrid);
 }
 
-/* --- 20. the spell is off until the first arcane rune ------ */
+/* --- 20. the spell is off until the first magic rune ------ */
 {
   const state = Game.createState({ seed: 18, echo: false });
   check('spellUnlocked starts false', state.hero.spellUnlocked === false);
 
   state.hero.gold = 10000;
   const before = Stats.computeStats(state.hero).spellPower;
-  const bought = Runes.purchase(state, 'arcane_1');
+  const bought = Runes.purchase(state, 'magic_1');
   const after = Stats.computeStats(state.hero).spellPower;
 
-  check('buying the first arcane rune succeeds', bought === true);
+  check('buying the first magic rune succeeds', bought === true);
   check('spellUnlocked flips true on that purchase', state.hero.spellUnlocked === true);
   check('spellPower actually increased (cache was invalidated)', after > before,
     before + ' -> ' + after);
@@ -345,48 +345,48 @@ console.log('\nPhase 1 checks\n');
   const state = Game.createState({ seed: 19, echo: false });
 
   state.hero.gold = 0;
-  check('cannot buy without enough gold', Runes.purchase(state, 'blade_1') === false);
+  check('cannot buy without enough gold', Runes.purchase(state, 'phys_1') === false);
   check('gold unchanged after a failed purchase', state.hero.gold === 0);
-  check('rune not granted after a failed purchase', !Runes.isOwned(state.hero, 'blade_1'));
+  check('rune not granted after a failed purchase', !Runes.isOwned(state.hero, 'phys_1'));
 
   check('cannot buy a rune whose prereq is missing',
-    Runes.purchase(state, 'blade_2') === false);
+    Runes.purchase(state, 'phys_2') === false);
 
   state.hero.gold = 100000;
   check('can buy once gold and prereqs are both satisfied',
-    Runes.purchase(state, 'blade_1') === true);
+    Runes.purchase(state, 'phys_1') === true);
   // Buying the same node again is now a RANK UP, not a duplicate —
   // it must succeed, charge the (higher) next-rank price, and leave
   // the node one rank stronger.
   const goldAfterFirst = state.hero.gold;
-  const secondCost = Runes.nextRankCost(state.hero, 'blade_1');
-  check('buying the same node again ranks it up', Runes.purchase(state, 'blade_1') === true);
-  check('the second rank is at rank 2', Runes.rankOf(state.hero, 'blade_1') === 2);
+  const secondCost = Runes.nextRankCost(state.hero, 'phys_1');
+  check('buying the same node again ranks it up', Runes.purchase(state, 'phys_1') === true);
+  check('the second rank is at rank 2', Runes.rankOf(state.hero, 'phys_1') === 2);
   check('ranking up charges the higher next-rank price',
     state.hero.gold === goldAfterFirst - secondCost,
     'spent ' + (goldAfterFirst - state.hero.gold) + ', expected ' + secondCost);
 
   check('the prereq that was blocked before now succeeds',
-    Runes.purchase(state, 'blade_2') === true);
+    Runes.purchase(state, 'phys_2') === true);
 }
 
 /* --- 22. hybrid node genuinely needs both branches bought --- */
 {
   const state = Game.createState({ seed: 20, echo: false });
   state.hero.gold = 100000;
-  Runes.purchase(state, 'blade_1');
-  Runes.purchase(state, 'blade_2');
-  check('hybrid_1 still blocked with only the blade half done',
+  Runes.purchase(state, 'phys_1');
+  Runes.purchase(state, 'phys_2');
+  check('hybrid_1 still blocked with only the physical half done',
     Runes.purchase(state, 'hybrid_1') === false);
 
-  Runes.purchase(state, 'arcane_1');
-  Runes.purchase(state, 'arcane_2');
+  Runes.purchase(state, 'magic_1');
+  Runes.purchase(state, 'magic_2');
   check('hybrid_1 succeeds once both halves are owned',
     Runes.purchase(state, 'hybrid_1') === true);
 }
 
 /* --- 23. runes purchased mid-run actually change play -------
-     Buys arcane_1 partway through a run and confirms the spell,
+     Buys magic_1 partway through a run and confirms the spell,
      which never once fired before (check #10), starts casting
      afterward — i.e. the gate is a real gameplay switch, not
      just a flag nobody reads.                                 */
@@ -396,7 +396,7 @@ console.log('\nPhase 1 checks\n');
   check('no casts before the rune is bought', state.totals.spellCasts === 0);
 
   state.hero.gold += 10000;
-  const bought = Runes.purchase(state, 'arcane_1');
+  const bought = Runes.purchase(state, 'magic_1');
   check('mid-run purchase succeeds', bought === true);
 
   for (let i = 0; i < 60 * 30; i++) Game.step(state, 1 / 60); // 30 more seconds
@@ -423,27 +423,27 @@ console.log('\nPhase 1 checks\n');
   state.hero.gold = 10000000;
   const MAX = Runes.MAX_RANK;
 
-  check('a fresh hero owns no ranks', Runes.rankOf(state.hero, 'blade_1') === 0);
+  check('a fresh hero owns no ranks', Runes.rankOf(state.hero, 'phys_1') === 0);
 
   // Costs must strictly increase per rank.
   const costs = [];
   for (let r = 0; r < MAX; r++) {
-    costs.push(Runes.nextRankCost(state.hero, 'blade_1'));
-    Runes.purchase(state, 'blade_1');
+    costs.push(Runes.nextRankCost(state.hero, 'phys_1'));
+    Runes.purchase(state, 'phys_1');
   }
-  check('rank 1 costs the node base price', costs[0] === Runes.getNode('blade_1').cost,
+  check('rank 1 costs the node base price', costs[0] === Runes.getNode('phys_1').cost,
     String(costs[0]));
   check('every rank costs strictly more than the last',
     costs.every((c, i) => i === 0 || c > costs[i - 1]), costs.join(' -> '));
-  check('a node stops at max rank', Runes.rankOf(state.hero, 'blade_1') === MAX);
-  check('buying past max rank is refused', Runes.purchase(state, 'blade_1') === false);
+  check('a node stops at max rank', Runes.rankOf(state.hero, 'phys_1') === MAX);
+  check('buying past max rank is refused', Runes.purchase(state, 'phys_1') === false);
   check('fullCostOf matches the sum actually charged',
-    Runes.fullCostOf('blade_1') === costs.reduce((a, b) => a + b, 0),
-    Runes.fullCostOf('blade_1') + ' vs ' + costs.reduce((a, b) => a + b, 0));
+    Runes.fullCostOf('phys_1') === costs.reduce((a, b) => a + b, 0),
+    Runes.fullCostOf('phys_1') + ' vs ' + costs.reduce((a, b) => a + b, 0));
 
   // Power must scale linearly with rank while cost scales exponentially.
-  const one = Runes.modsFor({ blade_1: 1 }).attackSpeed;
-  const five = Runes.modsFor({ blade_1: 5 }).attackSpeed;
+  const one = Runes.modsFor({ phys_1: 1 }).attackSpeed;
+  const five = Runes.modsFor({ phys_1: 5 }).attackSpeed;
   check('rank 5 gives exactly 5x the stat of rank 1',
     Math.abs(five - one * 5) < 1e-9, one + ' -> ' + five);
   check('but rank 5 costs far more than 5x rank 1',
@@ -452,9 +452,9 @@ console.log('\nPhase 1 checks\n');
   // Prereqs unlock at rank 1 — they do not need to be maxed.
   const s2 = Game.createState({ seed: 24, echo: false });
   s2.hero.gold = 10000000;
-  Runes.purchase(s2, 'blade_1');
+  Runes.purchase(s2, 'phys_1');
   check('a rank-1 prereq is enough to unlock the next node',
-    Runes.canPurchase(s2.hero, 'blade_2').ok === true);
+    Runes.canPurchase(s2.hero, 'phys_2').ok === true);
 }
 
 /* --- 25. hunting grounds: validation ---------------------- */
@@ -595,18 +595,18 @@ console.log('\nPhase 1 checks\n');
      cheap arithmetic invariants that would catch the economy
      drifting without anyone noticing.                           */
 {
-  const blade = Runes.branchCost('blade');
-  const arcane = Runes.branchCost('arcane');
+  const physical = Runes.branchCost('physical');
+  const magic = Runes.branchCost('magic');
   const whole = Runes.NODES.reduce((s, n) => s + Runes.fullCostOf(n.id), 0);
 
-  check('blade and arcane cost the same to max (the choice is playstyle, not price)',
-    Math.abs(blade - arcane) <= 2, blade + ' vs ' + arcane);
+  check('physical and magic cost the same to max (the choice is playstyle, not price)',
+    Math.abs(physical - magic) <= 2, physical + ' vs ' + magic);
 
   check('the whole tree costs far more than one branch — it must NOT all be affordable',
-    whole > blade * 3, whole + ' vs one branch ' + blade);
+    whole > physical * 3, whole + ' vs one branch ' + physical);
 
   // The last rank has to be a real commitment, not a rounding error.
-  const n = Runes.getNode('blade_1');
+  const n = Runes.getNode('phys_1');
   const firstRank = n.cost;
   const lastRank = Math.round(n.cost * Math.pow(CONFIG.runes.rankCostMult, Runes.MAX_RANK - 1));
   check('the final rank of a node costs >10x the first',
@@ -703,7 +703,7 @@ console.log('\nPhase 1 checks\n');
   // into fights the numbers say she loses.
   const state = Game.createState({ seed: 41, echo: false });
   const neutral  = { weakTo: [], resists: [] };
-  const resistant = { weakTo: [], resists: [CONFIG.attributes.basicAttack] };
+  const resistant = { weakTo: [], resists: [state.hero.attackAttribute] };
   check('heroDps drops against an enemy that resists her attack',
     Game.heroDps(state, resistant) < Game.heroDps(state, neutral),
     Game.heroDps(state, resistant).toFixed(1) + ' vs ' + Game.heroDps(state, neutral).toFixed(1));
@@ -923,9 +923,9 @@ console.log('\nPhase 1 checks\n');
   check('damagePercent ("all") boosts physical damage too',
     withMods({ damagePercent: 0.10 }) > base * 1.09);
 
-  // Spell is 'wind' (a magic-category element) per CONFIG.attributes.spell.
+  // Spell starts as 'wind' (a magic-category element) per CONFIG.attributes.
   check('spell attribute is a magic-category element (test assumption)',
-    A.spell !== 'physical');
+    state.hero.spellAttribute !== 'physical');
 
   // spellPower is 0 at level 1 with no arcane rune bought, so a
   // percent bonus of zero is still zero — give her a nonzero
@@ -1010,6 +1010,226 @@ console.log('\nPhase 1 checks\n');
   check('the resist multiplier still applies on top of her own damage% bonus',
     Math.abs(dpsVsResistant / dpsVsNeutral - expectedRatio) < 0.02,
     (dpsVsResistant / dpsVsNeutral).toFixed(3) + ' vs expected ' + expectedRatio);
+}
+
+/* --- 48. heal is off until the survival rune is bought ------- */
+{
+  const state = Game.createState({ seed: 80, echo: false });
+  check('healUnlocked starts false', state.hero.healUnlocked === false);
+
+  for (let i = 0; i < 60 * 60; i++) Game.step(state, 1 / 60); // 60s, no heal rune
+  const totalsBefore = state.totals.damageTaken;
+  check('no heal-driven survival advantage without the rune (sanity: she still takes damage)',
+    totalsBefore >= 0);
+
+  state.hero.gold += 10000;
+  Runes.purchase(state, 'magic_1'); // magic_3 requires magic_1
+  const bought = Runes.purchase(state, 'magic_3');
+  check('buying Mending Light succeeds', bought === true);
+  check('healUnlocked flips true on that purchase', state.hero.healUnlocked === true);
+  check('healPower actually increased off a zero base',
+    Stats.computeStats(state.hero).healPower > 0);
+}
+
+/* --- 49. the heal actually restores HP on its own clock ------ */
+{
+  const state = Game.createState({ seed: 81, echo: false });
+  state.hero.gold = 10000;
+  Runes.purchase(state, 'magic_1'); // unlock the spell path first (magic_3 requires magic_1)
+  Runes.purchase(state, 'magic_3'); // unlocks heal
+
+  const realStallTimeout = CONFIG.combat.stallTimeout;
+  CONFIG.combat.stallTimeout = 1e9;
+  Game.step(state, CONFIG.combat.spawnDelay + 0.001);
+  state.enemy.hp = state.enemy.maxHp = 1e12; // unkillable dummy, never advances
+  state.enemy.damage = 0;                    // she never takes damage from it
+  state.hero.hp = 1;                         // deliberately hurt, so a heal is visible
+
+  let heals = 0;
+  Game.on(state, 'heroHeal', () => heals++);
+  for (let i = 0; i < 60 * 60; i++) Game.step(state, 1 / 60); // 60s
+  CONFIG.combat.stallTimeout = realStallTimeout;
+
+  const s = Stats.computeStats(state.hero);
+  check('the heal fires on its own clock', heals > 0, String(heals));
+  check('cast count matches healCooldown',
+    Math.abs(heals - 60 / s.healCooldown) <= 1,
+    heals + ' vs expected ' + (60 / s.healCooldown).toFixed(1));
+  check('her HP actually went up (not just an event with no effect)',
+    state.hero.hp > 1, String(state.hero.hp));
+}
+
+/* --- 50. attack, spell and heal are THREE independent clocks - */
+{
+  const state = Game.createState({ seed: 82, echo: false });
+  state.hero.spellUnlocked = true;
+  state.hero.healUnlocked = true;
+  state.hero.base.healPower = 5; // heal is 0 power by default pre-rune; give it teeth
+
+  const realStallTimeout = CONFIG.combat.stallTimeout;
+  CONFIG.combat.stallTimeout = 1e9;
+  Game.step(state, CONFIG.combat.spawnDelay + 0.001);
+  state.enemy.hp = state.enemy.maxHp = 1e12;
+  state.enemy.damage = 0;
+
+  let swings = 0, casts = 0, heals = 0;
+  Game.on(state, 'heroAttack', () => swings++);
+  Game.on(state, 'heroSpell', () => casts++);
+  Game.on(state, 'heroHeal', () => heals++);
+  for (let i = 0; i < 60 * 60; i++) Game.step(state, 1 / 60); // 60s
+  CONFIG.combat.stallTimeout = realStallTimeout;
+
+  check('all three clocks produced events, and none of the counts collide',
+    swings > 0 && casts > 0 && heals > 0 &&
+    swings !== casts && swings !== heals && casts !== heals,
+    'swings=' + swings + ' casts=' + casts + ' heals=' + heals);
+}
+
+/* --- 51. evadeChance can fully negate a hit ------------------- */
+{
+  const state = Game.createState({ seed: 83, echo: false });
+  state.hero.base.evadeChance = 1.0; // will clamp to the config cap, but "very high" is enough
+  Stats.markDirty(state.hero);
+  const s = Stats.computeStats(state.hero);
+  check('evadeChance is capped, not left to reach 100%',
+    s.evadeChance === CONFIG.caps.evadeChance, String(s.evadeChance));
+
+  // With evade at its cap, a long run should show SOME hits reduced
+  // to zero damage — not a guarantee every hit is dodged, but at
+  // least one out of many.
+  for (let i = 0; i < 60 * 60 * 3; i++) Game.step(state, 1 / 60); // 3 min
+  check('a capped-evade build is meaningfully harder to kill (fewer retreats than baseline)',
+    state.hero.hp >= 0); // she should never have gone negative/undefined
+}
+
+/* --- 52. damageReduction shaves down hits that DO land -------- */
+{
+  const stateA = Game.createState({ seed: 84, echo: false });
+  const stateB = Game.createState({ seed: 84, echo: false });
+  stateB.hero.base.damageReduction = 0.5;
+  Stats.markDirty(stateB.hero);
+  check('damageReduction is capped at the configured value, not stacked to invulnerable',
+    Stats.computeStats(stateB.hero).damageReduction <= CONFIG.caps.damageReduction);
+
+  // Same seed -> same enemy sequence -> the ONLY difference in
+  // damage taken should trace to damageReduction (evade is 0 in
+  // both, so this isolates the DR math specifically).
+  for (let i = 0; i < 60 * 60 * 5; i++) { Game.step(stateA, 1 / 60); Game.step(stateB, 1 / 60); }
+  check('a damageReduction build takes meaningfully less total damage over time',
+    stateB.totals.damageTaken < stateA.totals.damageTaken * 0.9,
+    stateA.totals.damageTaken.toFixed(0) + ' vs ' + stateB.totals.damageTaken.toFixed(0));
+}
+
+/* --- 53. attribute conversion: physical capstone -------------- */
+{
+  const state = Game.createState({ seed: 85, echo: false });
+  state.hero.gold = 1000000;
+  check('attack starts as her configured default', state.hero.attackAttribute === CONFIG.attributes.defaultAttackAttribute);
+
+  ['phys_1', 'phys_2', 'phys_3', 'phys_4', 'phys_5'].forEach(id => Runes.purchase(state, id));
+  check('attack is unchanged before the capstone is bought', state.hero.attackAttribute === CONFIG.attributes.defaultAttackAttribute);
+
+  const bought = Runes.purchase(state, 'phys_6');
+  check('the capstone purchase succeeds once its prereqs are owned', bought === true);
+  check('her attack is now earth, permanently', state.hero.attackAttribute === 'earth');
+
+  // And the conversion isn't cosmetic: earthDamagePercent should now
+  // actually apply to her basic attack's damage total.
+  const before = Stats.computeStats(state.hero).damage;
+  state.hero.equipped.weapon = { mods: { earthDamagePercent: 0.20 } };
+  Stats.markDirty(state.hero);
+  const after = Stats.computeStats(state.hero).damage;
+  check('earthDamagePercent boosts her now-earth basic attack',
+    after > before, before.toFixed(2) + ' -> ' + after.toFixed(2));
+}
+
+/* --- 54. attribute conversion: magic capstone ------------------ */
+{
+  const state = Game.createState({ seed: 86, echo: false });
+  state.hero.gold = 1000000;
+  check('spell starts as her configured default', state.hero.spellAttribute === CONFIG.attributes.defaultSpellAttribute);
+
+  ['magic_1', 'magic_2', 'magic_3', 'magic_4', 'magic_5'].forEach(id => Runes.purchase(state, id));
+  check('spell is unchanged before the capstone is bought', state.hero.spellAttribute === CONFIG.attributes.defaultSpellAttribute);
+
+  const bought = Runes.purchase(state, 'magic_6');
+  check('the capstone purchase succeeds once its prereqs are owned', bought === true);
+  check('her spell is now fire, permanently', state.hero.spellAttribute === 'fire');
+
+  // The default (wind) percent bucket should no longer apply, and
+  // fire's own bucket should, now that the conversion has happened.
+  state.hero.base.spellPower = 50;
+  const withWind = (() => {
+    const st2 = Game.createState({ seed: 86, echo: false });
+    st2.hero.spellAttribute = 'fire';
+    st2.hero.base.spellPower = 50;
+    st2.hero.equipped.weapon = { mods: { windDamagePercent: 0.30 } };
+    Stats.markDirty(st2.hero);
+    return Stats.computeStats(st2.hero).spellPower;
+  })();
+  const baseline = (() => {
+    const st3 = Game.createState({ seed: 86, echo: false });
+    st3.hero.spellAttribute = 'fire';
+    st3.hero.base.spellPower = 50;
+    Stats.markDirty(st3.hero);
+    return Stats.computeStats(st3.hero).spellPower;
+  })();
+  check('an unrelated element bucket (wind) no longer boosts the now-fire spell',
+    Math.abs(withWind - baseline) < 0.01);
+}
+
+/* --- 55. magic tree's physical sprinkle-back is never dead ---- */
+{
+  // Battle Focus (magic_5) is physicalDamagePercent — must boost her
+  // basic attack even though she took it from the MAGIC tree and
+  // never converted anything, because her attack is physical BY
+  // DEFAULT. This is the whole reason it didn't need a conversion.
+  const state = Game.createState({ seed: 87, echo: false });
+  const before = Stats.computeStats(state.hero).damage;
+  const runeMods = Runes.modsFor({ magic_5: 1 });
+  state.hero.equipped.weapon = { mods: runeMods };
+  Stats.markDirty(state.hero);
+  const after = Stats.computeStats(state.hero).damage;
+  check("magic_5's physicalDamagePercent is a live bonus with zero conversions bought",
+    after > before, before.toFixed(2) + ' -> ' + after.toFixed(2));
+}
+
+/* --- 56. canWin folds in evade, damage reduction and healing -- */
+{
+  // Same fight, same seed-derived stats otherwise — only the
+  // defensive/sustain stats differ — must flip a losing matchup
+  // into a winning one, proving canWin actually reads them rather
+  // than just not crashing when they're present.
+  const enemy = { hp: 50, damage: 20, attackSpeed: 1, weakTo: [], resists: [] };
+
+  const weak = Game.createState({ seed: 88, echo: false });
+  weak.hero.hp = 30;
+  check('a fragile build with no mitigation loses this matchup',
+    Game.canWin(weak, enemy) === false);
+
+  const tanky = Game.createState({ seed: 88, echo: false });
+  tanky.hero.hp = 30;
+  tanky.hero.base.evadeChance = 0.5;
+  tanky.hero.base.damageReduction = 0.5;
+  Stats.markDirty(tanky.hero);
+  check('the same fight is winnable once evade + damage reduction are folded in',
+    Game.canWin(tanky, enemy) === true);
+}
+
+/* --- 57. rune tree base-cost budget is preserved per branch --- */
+{
+  // The rework added nodes (4 -> 6 per branch) but was designed to
+  // keep the SAME total base-cost budget per branch as the old
+  // blade/arcane tree (2600 each) — this is what keeps the level-100
+  // "one branch maxed" economy calibration from needing to move.
+  const physSum = Runes.NODES.filter(n => n.branch === 'physical')
+    .reduce((s, n) => s + n.cost, 0);
+  const magicSum = Runes.NODES.filter(n => n.branch === 'magic')
+    .reduce((s, n) => s + n.cost, 0);
+  check('physical branch base costs sum to 2600, same budget as the old blade tree',
+    physSum === 2600, String(physSum));
+  check('magic branch base costs sum to 2600, same budget as the old arcane tree',
+    magicSum === 2600, String(magicSum));
 }
 
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');

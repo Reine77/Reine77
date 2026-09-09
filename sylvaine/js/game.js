@@ -249,15 +249,15 @@
   // against the same enemy.
   function heroDps(state, against) {
     var s = Stats.computeStats(state.hero);
-    var A = CONFIG.attributes;
+    var hero = state.hero;
 
     var avgHit = s.damage * (1 + s.critChance * (s.critMult - 1));
     var dps = avgHit * s.attackSpeed *
-      (against ? attributeMultiplier(against, A.basicAttack) : 1);
+      (against ? attributeMultiplier(against, hero.attackAttribute) : 1);
 
     if (state.hero.spellUnlocked) {
       dps += ((s.spellPower * CONFIG.combat.spellDamageMult) / s.spellCooldown) *
-        (against ? attributeMultiplier(against, A.spell) : 1);
+        (against ? attributeMultiplier(against, hero.spellAttribute) : 1);
     }
     return dps;
   }
@@ -267,7 +267,22 @@
     if (dps <= 0) return false;
 
     var ttk = enemy.hp / dps;
-    var enemyDps = enemy.damage * enemy.attackSpeed;
+
+    // Fold evade + damage reduction into the INCOMING dps: both
+    // shave down what actually lands, in expectation, the same way
+    // averaging crits into heroDps above is the honest prediction
+    // rather than a gamble on either extreme.
+    var s = Stats.computeStats(state.hero);
+    var rawEnemyDps = enemy.damage * enemy.attackSpeed;
+    var mitigatedEnemyDps = rawEnemyDps * (1 - s.evadeChance) * (1 - s.damageReduction);
+
+    // The heal offsets incoming damage per second too — a build
+    // that heals faster than it takes damage should read as
+    // "unkillable" here, not just "survives a bit longer". Only
+    // subtract it once healUnlocked (0 otherwise, so this is a
+    // no-op for a build that never touched magic_3).
+    var healPerSecond = state.hero.healUnlocked ? s.healPower / s.healCooldown : 0;
+    var effectiveEnemyDps = Math.max(0, mitigatedEnemyDps - healPerSecond);
 
     // Deliberately CURRENT hp, not max hp — tried max hp here first
     // and it was wrong. The real fight that follows this check runs
@@ -280,7 +295,7 @@
     // ("overwhelmed by...") in a 60-minute run instead of reducing
     // them. Current hp is what makes this an honest "would I survive
     // THIS fight, right now" answer instead of an optimistic one.
-    var ttd = enemyDps > 0 ? state.hero.hp / enemyDps : Infinity;
+    var ttd = effectiveEnemyDps > 0 ? state.hero.hp / effectiveEnemyDps : Infinity;
 
     return ttk <= ttd * CONFIG.combat.bossMargin;
   }
@@ -311,6 +326,19 @@
         if (state.phase !== 'fighting') return;
       }
     }
+
+    // Heal — a third, independent clock. Doesn't damage anything,
+    // so it never needs the "did the enemy die / did I die mid-tick"
+    // guard the other two have, but it's still its own while loop
+    // for the same reason they are: a very long dt (or a very short
+    // cooldown from stacked ranks) shouldn't silently drop heals.
+    if (hero.healUnlocked) {
+      hero.timers.heal -= dt;
+      while (hero.timers.heal <= 0) {
+        hero.timers.heal += s.healCooldown;
+        castHeal(state);
+      }
+    }
   }
 
   function basicAttack(state) {
@@ -320,7 +348,7 @@
     if (crit) state.totals.crits++;
 
     emit(state, 'heroAttack', { crit: crit, damage: damage });
-    damageEnemy(state, damage, crit ? 'crit' : 'hit', CONFIG.attributes.basicAttack);
+    damageEnemy(state, damage, crit ? 'crit' : 'hit', state.hero.attackAttribute);
   }
 
   function castSpell(state) {
@@ -329,7 +357,21 @@
     state.totals.spellCasts++;
 
     emit(state, 'heroSpell', { damage: damage });
-    damageEnemy(state, damage, 'spell', CONFIG.attributes.spell);
+    damageEnemy(state, damage, 'spell', state.hero.spellAttribute);
+  }
+
+  function castHeal(state) {
+    var hero = state.hero;
+    var s = Stats.computeStats(hero);
+    var before = hero.hp;
+    hero.hp = Math.min(s.maxHp, hero.hp + s.healPower);
+    var healed = hero.hp - before;
+
+    emit(state, 'heroHeal', { amount: healed });
+    if (CONFIG.debug.logEverySwing && healed > 0) {
+      state.log.push('heal', 'Sylvaine mends ' + healed.toFixed(1) +
+        ' HP (' + Math.round(hero.hp) + '/' + Math.round(s.maxHp) + ')', state.time);
+    }
   }
 
   /* ---- Elemental matchup -------------------------------------
@@ -353,7 +395,7 @@
 
   function damageEnemy(state, damage, kind, attribute) {
     var enemy = state.enemy;
-    attribute = attribute || CONFIG.attributes.basicAttack;
+    attribute = attribute || state.hero.attackAttribute;
 
     var mult = attributeMultiplier(enemy, attribute);
     damage = Math.round(damage * mult * 10) / 10;
@@ -389,14 +431,24 @@
 
   function enemyAttack(state) {
     var hero = state.hero;
-    var damage = state.enemy.damage;
+    var s = Stats.computeStats(hero);
+
+    // Evade first: a fully-avoided hit deals zero damage, full stop
+    // — damage reduction never gets a chance to touch it. This is
+    // real combat (not a UI probe), so it's fine — required, even —
+    // to consume state.rng here.
+    var evaded = state.rng.chance(s.evadeChance);
+    var damage = evaded ? 0 : state.enemy.damage * (1 - s.damageReduction);
+
     hero.hp -= damage;
     state.totals.damageTaken += damage;
 
-    emit(state, 'heroDamaged', { damage: damage, enemy: state.enemy });
+    emit(state, 'heroDamaged', { damage: damage, enemy: state.enemy, evaded: evaded });
     if (CONFIG.debug.logEverySwing) {
-      state.log.push('taken', state.enemy.name + ' hits for ' + damage +
-        ' (Sylvaine ' + Math.max(0, Math.round(hero.hp)) + ' HP)', state.time);
+      state.log.push('taken', evaded
+        ? state.enemy.name + "'s attack is evaded"
+        : state.enemy.name + ' hits for ' + damage.toFixed(1) +
+          ' (Sylvaine ' + Math.max(0, Math.round(hero.hp)) + ' HP)', state.time);
     }
 
     if (hero.hp <= 0) {
@@ -520,7 +572,20 @@
       return;
     }
 
-    if (!enemy.isBoss) state.highestNormalCleared = state.stage;
+    // Math.max, not a blind assignment: this line only runs while
+    // climbing normally (both the farmTarget and automatic-farming
+    // branches above return before reaching it), but "normally"
+    // still includes resuming at a re-won blockedStage that can be
+    // BELOW her true frontier — a chain-retreat can hand her back a
+    // blockedStage lower than a stage she cleared earlier in the
+    // same climb. A blind assignment would silently regress the
+    // frontier there, which quietly re-triggers the XP/gold falloff
+    // on stages she had already earned full credit for. Found by
+    // measurement (a "she climbs again after release" check started
+    // failing with frontier going DOWN over time), not by reasoning.
+    if (!enemy.isBoss) {
+      state.highestNormalCleared = Math.max(state.highestNormalCleared, state.stage);
+    }
     state.stage += 1;
   }
 

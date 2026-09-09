@@ -28,7 +28,7 @@
      -- Phase 3: runes --
      S.runes()                the whole tree: owned / affordable /
                               locked-and-why, one row per node
-     S.buyRune('arcane_1')    attempt a real purchase (spends gold)
+     S.buyRune('magic_1')     attempt a real purchase (spends gold)
      S.giveGold(5000)         debug: hand her gold, for testing runes
                               without waiting on a real economy
    ============================================================= */
@@ -71,6 +71,7 @@
         'S.resume()       -> restart the loop',
         'S.fast(seconds)  -> simulate instantly (default 60)',
         'S.unlockSpell()  -> debug: turn the spell on',
+        'S.unlockHeal()   -> debug: turn the heal on',
         'S.verbose(bool)  -> log every swing',
         'S.report()       -> totals summary',
         'S.reset(seed)    -> start over with a seed',
@@ -84,7 +85,7 @@
         '',
         '-- Phase 3: runes --',
         'S.runes()                 -> the whole tree: status + why-not',
-        "S.buyRune('arcane_1')     -> attempt a real purchase",
+        "S.buyRune('magic_1')      -> attempt a real purchase",
         'S.giveGold(n)             -> debug: hand her gold',
         '',
         '-- hunting grounds --',
@@ -123,6 +124,13 @@
         Stats.computeStats(state.hero).spellPower);
     },
 
+    unlockHeal: function () {
+      state.hero.healUnlocked = true;
+      state.hero.timers.heal = Stats.computeStats(state.hero).healCooldown;
+      console.log('heal unlocked (debug) — healPower is ' +
+        Stats.computeStats(state.hero).healPower);
+    },
+
     verbose: function (v) {
       Sylvaine.CONFIG.debug.logEverySwing = v !== false;
       console.log('logEverySwing = ' + Sylvaine.CONFIG.debug.logEverySwing);
@@ -137,10 +145,18 @@
         level:    state.hero.level,
         gold:     Math.round(state.hero.gold),
         hp:       Math.round(state.hero.hp) + '/' + Math.round(s.maxHp),
-        damage:   s.damage.toFixed(1),
+        damage:   s.damage.toFixed(1) + ' (' + state.hero.attackAttribute + ')',
         atkSpeed: s.attackSpeed.toFixed(2),
         crit:     (s.critChance * 100).toFixed(1) + '%',
+        evade:    (s.evadeChance * 100).toFixed(1) + '%',
+        dmgReduc: (s.damageReduction * 100).toFixed(1) + '%',
         dps:      Math.round(Game.heroDps(state)),
+        spell:    state.hero.spellUnlocked
+                    ? s.spellPower.toFixed(1) + ' (' + state.hero.spellAttribute + ')'
+                    : '(locked)',
+        heal:     state.hero.healUnlocked
+                    ? s.healPower.toFixed(1) + ' / ' + s.healCooldown.toFixed(1) + 's'
+                    : '(locked)',
         weapon:   eq.weapon ? eq.weapon.name : '(none)',
         armor:    eq.armor ? eq.armor.name : '(none)',
         kills:    state.totals.kills,
@@ -149,8 +165,7 @@
                   ' equipped / ' + state.totals.epicsFound + ' epic',
         retreats: state.totals.retreats,
         runes:    Runes.totalRanks(state.hero) + '/' +
-                  (Runes.NODES.length * Runes.MAX_RANK) + ' ranks' +
-                  (state.hero.spellUnlocked ? ' (spell unlocked)' : ' (no spell yet)')
+                  (Runes.NODES.length * Runes.MAX_RANK) + ' ranks'
       });
       return state.totals;
     },
@@ -245,8 +260,8 @@
         };
       });
       console.table(rows);
-      console.log('Maxing one branch costs: blade ' + Runes.branchCost('blade') +
-        'g, arcane ' + Runes.branchCost('arcane') + 'g, hybrid ' +
+      console.log('Maxing one branch costs: physical ' + Runes.branchCost('physical') +
+        'g, magic ' + Runes.branchCost('magic') + 'g, hybrid ' +
         Runes.branchCost('hybrid') + 'g');
     },
 
