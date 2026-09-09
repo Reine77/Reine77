@@ -118,6 +118,11 @@
       farmClear:   document.getElementById('farmClear'),
       farmHint:    document.getElementById('farmHint'),
 
+      tokenLine:   document.getElementById('tokenLine'),
+      bossSelect:  document.getElementById('bossSelect'),
+      bossGo:      document.getElementById('bossGo'),
+      bossHint:    document.getElementById('bossHint'),
+
       runeList:    document.getElementById('runeList'),
       logList:     document.getElementById('logList')
     };
@@ -127,6 +132,7 @@
 
     buildRuneList();
     wireFarmControls();
+    wireBossControls();
     setupImageFallback(el.heroSprite, el.heroPortrait);
     setupImageFallback(el.enemySprite, el.enemyPortrait);
     setupImageFallback(el.swordTrail, null); // trail has no fallback text to reveal
@@ -419,6 +425,79 @@
       }
     }
 
+    /* =========================================================
+       BOSS CHALLENGE PANEL
+       ========================================================= */
+    function wireBossControls() {
+      el.bossGo.addEventListener('click', function () {
+        Game.startBossChallenge(state, parseInt(el.bossSelect.value, 10));
+        update();
+      });
+      el.bossSelect.addEventListener('change', updateBossPanel);
+    }
+
+    var lastBossOptions = '';
+    var lastTokenLine = null;
+    var lastBossHint = null;
+
+    function updateBossPanel() {
+      var hero = state.hero;
+
+      var tokenHtml = '<span class="tokens">' + hero.bossTokens + '</span> boss token' +
+        (hero.bossTokens === 1 ? '' : 's') +
+        (state.bossChallenge
+          ? ' — <strong>challenge in progress</strong> (stage ' + state.bossChallenge.stage + ')'
+          : '');
+      if (tokenHtml !== lastTokenLine) {
+        el.tokenLine.innerHTML = tokenHtml;
+        lastTokenLine = tokenHtml;
+      }
+
+      // Rebuild the option list only when the set of beaten bosses
+      // actually changes — otherwise a rebuild every frame would
+      // reset the player's selection while they're looking at it.
+      var stages = Object.keys(state.clearedBossStages).map(Number).sort(function (a, b) {
+        return a - b;
+      });
+      var signature = stages.join(',');
+      if (signature !== lastBossOptions) {
+        var keep = el.bossSelect.value;
+        el.bossSelect.innerHTML = '';
+        stages.forEach(function (st) {
+          var boss = Sylvaine.Enemies.bossAtStage(st);
+          var opt = document.createElement('option');
+          opt.value = st;
+          opt.textContent = 'Stage ' + st + ' — ' + (boss ? boss.name : 'boss');
+          el.bossSelect.appendChild(opt);
+        });
+        if (keep && stages.indexOf(Number(keep)) !== -1) el.bossSelect.value = keep;
+        lastBossOptions = signature;
+      }
+
+      var hint, hintClass = '';
+      if (!stages.length) {
+        el.bossGo.disabled = true;
+        hint = 'Beat a boss first — you can only re-challenge bosses you have already cleared.';
+      } else {
+        var wanted = parseInt(el.bossSelect.value, 10);
+        var check = Game.canChallengeBoss(state, wanted);
+        el.bossGo.disabled = !check.ok;
+        if (!check.ok) {
+          hintClass = 'warn';
+          hint = check.reason + '.';
+        } else {
+          hint = 'One fight, then straight back to where you were. ' +
+            'Loot rolls at stage ' + wanted + " — so it is only worth it on the " +
+            'highest boss you can actually beat.';
+        }
+      }
+      if (hint !== lastBossHint) {
+        el.bossHint.textContent = hint;
+        el.bossHint.className = hintClass;
+        lastBossHint = hint;
+      }
+    }
+
     function updateRuneList(hero) {
       Runes.NODES.forEach(function (node) {
         var refs = runeRows[node.id];
@@ -552,6 +631,7 @@
         (eq.armor ? eq.armor.name : 'none') + '</span>';
 
       updateFarmPanel();
+      updateBossPanel();
       updateRuneList(hero);
       updateLog();
     }

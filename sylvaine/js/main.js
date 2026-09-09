@@ -90,7 +90,12 @@
         '-- hunting grounds --',
         'S.farmStage(30)           -> park on a cleared, non-boss stage',
         'S.autoAdvance()           -> release it, resume climbing',
-        'S.killCounts()            -> kills per creature type'
+        'S.killCounts()            -> kills per creature type',
+        '',
+        '-- boss challenges --',
+        'S.bosses()                -> beaten bosses, times defeated, challengeable?',
+        'S.challengeBoss(20)       -> spend a token to re-fight that boss',
+        'S.giveTokens(5)           -> debug: hand her tokens'
       ].join('\n'));
     },
 
@@ -271,6 +276,32 @@
         .reduce(function (acc, key) { acc[key] = byType[key]; return acc; }, {});
       console.table(rows);
       return byType;
+    },
+
+    // Boss challenges — spend a token to re-fight a beaten boss.
+    bosses: function () {
+      var rows = {};
+      Object.keys(state.clearedBossStages).map(Number).sort(function (a, b) { return a - b; })
+        .forEach(function (st) {
+          var boss = Sylvaine.Enemies.bossAtStage(st);
+          var check = Game.canChallengeBoss(state, st);
+          rows['stage ' + st] = {
+            boss: boss ? boss.name : '?',
+            id: boss ? boss.id : '?',
+            defeated: state.totals.bossKillsById[boss ? boss.id : ''] || 0,
+            challengeable: check.ok ? 'yes' : check.reason
+          };
+        });
+      console.table(rows);
+      console.log('tokens held: ' + state.hero.bossTokens);
+      return state.totals.bossKillsById;
+    },
+
+    challengeBoss: function (stage) { return Game.startBossChallenge(state, stage); },
+
+    giveTokens: function (n) {
+      state.hero.bossTokens += (n || 1);
+      console.log('tokens: ' + state.hero.bossTokens);
     },
 
     giveGold: function (amount) {

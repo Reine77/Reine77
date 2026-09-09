@@ -204,6 +204,13 @@
     if (!item) return;
 
     state.totals.itemDrops++;
+    // Counted on the DROP, not on the equip. This used to live inside
+    // the equip branch, so an epic that wasn't an upgrade was sold and
+    // never counted — the stat quietly under-reported its own name,
+    // which matters now that epics can drop from trash at a stage
+    // below the one she's geared for.
+    if (item.rarity === 'epic') state.totals.epicsFound++;
+
     var hero = state.hero;
     var equipped = hero.equipped[item.slot];
     var newPower = computePower(item);
@@ -219,7 +226,7 @@
       hero.equipped[item.slot] = item;
       Sylvaine.Stats.markDirty(hero); // the classic cache bug — see stats.js
       state.totals.itemsEquipped++;
-      if (item.rarity === 'epic') state.totals.epicsFound++;
+      if (item.rarity === 'epic') state.totals.epicsEquipped++;
 
       state.log.push('item', 'Found ' + item.name + ' [' + item.rarity + '] (' +
         describeMods(item.mods) + ') -> equipped.', state.time);

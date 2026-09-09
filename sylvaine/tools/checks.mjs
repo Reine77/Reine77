@@ -132,6 +132,9 @@ console.log('\nPhase 1 checks\n');
 {
   function swingsIn(seconds, hz) {
     const state = Game.createState({ seed: 8, echo: false });
+    // Save the REAL configured value — restoring a hardcoded number
+    // here silently desynced every later test when the config moved.
+    const realStallTimeout = CONFIG.combat.stallTimeout;
     CONFIG.combat.stallTimeout = 1e9;      // isolate the timers
     state.hero.base.critChance = 0;        // remove RNG from the equation
     Stats.markDirty(state.hero);
@@ -142,7 +145,7 @@ console.log('\nPhase 1 checks\n');
     Game.on(state, 'heroAttack', () => swings++);
     const dt = 1 / hz;
     for (let i = 0; i < Math.round(seconds * hz); i++) Game.step(state, dt);
-    CONFIG.combat.stallTimeout = 60;
+    CONFIG.combat.stallTimeout = realStallTimeout;
     return swings;
   }
   const at60 = swingsIn(100, 60);
@@ -157,6 +160,7 @@ console.log('\nPhase 1 checks\n');
 /* --- 9. the two timers are independent -------------------- */
 {
   const state = Game.createState({ seed: 9, echo: false });
+  const realStallTimeout9 = CONFIG.combat.stallTimeout;
   CONFIG.combat.stallTimeout = 1e9;
   state.hero.spellUnlocked = true;
   Game.step(state, CONFIG.combat.spawnDelay + 0.001);
@@ -166,7 +170,7 @@ console.log('\nPhase 1 checks\n');
   Game.on(state, 'heroAttack', () => swings++);
   Game.on(state, 'heroSpell', () => casts++);
   for (let i = 0; i < 60 * 60; i++) Game.step(state, 1 / 60); // 60s
-  CONFIG.combat.stallTimeout = 60;
+  CONFIG.combat.stallTimeout = realStallTimeout9;
   const s = Stats.computeStats(state.hero);
   check('spell fires on its own clock, not per swing',
     casts > 0 && casts !== swings,
@@ -209,8 +213,10 @@ console.log('\nPhase 1 checks\n');
       if (item.rarity === 'epic') epicsFromNormal++;
     }
   }
-  check('epic never drops from a normal stage (20000 rolls)', epicsFromNormal === 0,
-    epicsFromNormal + ' epics out of ' + drops + ' drops');
+  const epicRate = drops ? epicsFromNormal / drops : 0;
+  check('epic CAN drop from normal stages, but stays rare (~2% of drops)',
+    epicRate > 0 && epicRate < 0.05,
+    (epicRate * 100).toFixed(2) + '% of ' + drops + ' drops');
   check('normal drop chance is roughly 15% (within 2%)',
     Math.abs(drops / 20000 - CONFIG.items.dropChance.normal) < 0.02,
     (drops / 20000 * 100).toFixed(1) + '%');
@@ -703,6 +709,114 @@ console.log('\nPhase 1 checks\n');
     Game.heroDps(state, resistant).toFixed(1) + ' vs ' + Game.heroDps(state, neutral).toFixed(1));
   check('heroDps with no enemy given is the unmodified baseline',
     Game.heroDps(state) === Game.heroDps(state, neutral));
+}
+
+/* --- 37. boss tokens drop and accumulate -------------------- */
+{
+  const state = Game.createState({ seed: 50, echo: false });
+  for (let i = 0; i < 60 * 60 * 30; i++) Game.step(state, 1 / 60);
+  check('tokens drop during normal play', state.totals.tokensFound > 0,
+    String(state.totals.tokensFound));
+  check('boss clears are recorded', Object.keys(state.clearedBossStages).length > 0,
+    Object.keys(state.clearedBossStages).join(','));
+  check('boss kills are counted per boss identity, not per stage',
+    Object.keys(state.totals.bossKillsById).length > 0,
+    JSON.stringify(state.totals.bossKillsById));
+  check('every tracked boss id is real',
+    Object.keys(state.totals.bossKillsById).every(id => Enemies.bosses.some(b => b.id === id)),
+    Object.keys(state.totals.bossKillsById).join(','));
+}
+
+/* --- 38. challenge validation ------------------------------- */
+{
+  const state = Game.createState({ seed: 51, echo: false });
+  for (let i = 0; i < 60 * 60 * 30; i++) Game.step(state, 1 / 60);
+  const cleared = Object.keys(state.clearedBossStages).map(Number).sort((a, b) => a - b);
+
+  check('a non-boss stage cannot be challenged',
+    Game.canChallengeBoss(state, 7).ok === false);
+  check('an unbeaten boss cannot be challenged',
+    Game.canChallengeBoss(state, 990).ok === false);
+
+  const someBoss = cleared[0];
+  state.hero.bossTokens = 0;
+  check('cannot challenge with no tokens',
+    Game.canChallengeBoss(state, someBoss).ok === false,
+    Game.canChallengeBoss(state, someBoss).reason);
+
+  state.hero.bossTokens = 5;
+  check('a beaten boss with a token in hand is challengeable',
+    Game.canChallengeBoss(state, someBoss).ok === true,
+    Game.canChallengeBoss(state, someBoss).reason || '');
+}
+
+/* --- 39. a challenge is a one-off that restores her place ---- */
+{
+  const state = Game.createState({ seed: 52, echo: false });
+  for (let i = 0; i < 60 * 60 * 30; i++) Game.step(state, 1 / 60);
+  const cleared = Object.keys(state.clearedBossStages).map(Number).sort((a, b) => a - b);
+  const target = cleared[0];
+
+  state.hero.bossTokens = 3;
+  const stageBefore = state.stage;
+  const tokensBefore = state.hero.bossTokens;
+  const bossKillsBefore = state.totals.bossKills;
+
+  check('challenge starts', Game.startBossChallenge(state, target) === true);
+  check('a token is consumed', state.hero.bossTokens === tokensBefore - 1);
+  check('she is moved to the boss stage', state.stage === target, String(state.stage));
+
+  // Run until the challenge resolves one way or the other.
+  for (let i = 0; i < 60 * 60 * 10 && state.bossChallenge !== null; i++) Game.step(state, 1 / 60);
+  check('the challenge ends rather than looping forever', state.bossChallenge === null);
+  check('she is returned to where she was', state.stage === stageBefore,
+    stageBefore + ' -> ' + state.stage);
+  check('the re-killed boss counted again',
+    state.totals.bossKills > bossKillsBefore,
+    bossKillsBefore + ' -> ' + state.totals.bossKills);
+}
+
+/* --- 40. a challenge does not cancel a hunting ground -------- */
+{
+  const state = Game.createState({ seed: 53, echo: false });
+  for (let i = 0; i < 60 * 60 * 30; i++) Game.step(state, 1 / 60);
+  const target = Object.keys(state.clearedBossStages).map(Number).sort((a, b) => a - b)[0];
+  Game.setFarmTarget(state, 5);
+  state.hero.bossTokens = 3;
+
+  Game.startBossChallenge(state, target);
+  check('the hunting ground is suspended during a challenge', state.farmTarget === null);
+  for (let i = 0; i < 60 * 60 * 10 && state.bossChallenge !== null; i++) Game.step(state, 1 / 60);
+  check('and restored afterwards', state.farmTarget === 5, String(state.farmTarget));
+}
+
+/* --- 41. epic rates, measured deterministically --------------
+     Rates rather than a timed run: an hour of play only yields ~1
+     epic, so a "did an hour produce N" assertion is a coin flip.
+     Sampling the drop table directly is exact and fast.        */
+{
+  const { Items } = Sylvaine;
+  const state = Game.createState({ seed: 54, echo: false });
+  const bossEnemy = Enemies.spawn(10, Sylvaine.makeRng(1));
+
+  let bossEpics = 0;
+  const N = 20000;
+  for (let i = 0; i < N; i++) {
+    const item = Items.rollDrop(state, bossEnemy);
+    if (item && item.rarity === 'epic') bossEpics++;
+  }
+  const rate = bossEpics / N;
+  check('boss epic rate matches config (~25%)',
+    Math.abs(rate - CONFIG.items.rarityWeights.boss.epic) < 0.02,
+    (rate * 100).toFixed(1) + '%');
+
+  check('bosses remain FAR better than trash for epics (the milestone rule)',
+    CONFIG.items.rarityWeights.boss.epic > CONFIG.items.rarityWeights.normal.epic * 5,
+    CONFIG.items.rarityWeights.boss.epic + ' vs ' + CONFIG.items.rarityWeights.normal.epic);
+
+  check('epicsFound counts drops, not just upgrades',
+    /epicsFound\+\+/.test(readFileSync(join(jsDir, 'items.js'), 'utf8').split('if (newPower > oldPower)')[0]),
+    'the counter must increment before the equip branch');
 }
 
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');

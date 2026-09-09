@@ -172,6 +172,26 @@
       rankCostMult: 3.1
     },
 
+    /* ---- Boss tokens ----------------------------------------
+       A token buys one re-fight of a boss you have already beaten.
+       It is a plain counter on the hero, NOT an inventory item —
+       nothing about it needs the gear inventory to exist.
+
+       WHY this is safe to allow at all: two rules already in the
+       codebase make farming an old boss self-limiting. Item power
+       rolls from the stage the item dropped at, so a stage-10 epic
+       is junk to a stage-50 hero; and the XP/gold relevance
+       falloff means an outleveled boss pays almost nothing. So the
+       only reason to spend a token is on the HIGHEST boss you can
+       actually beat, which is exactly the intended behaviour.
+
+       bossKill is generous on purpose: a boss usually hands one
+       back, so the loop partly sustains itself (1/(1-0.25) = 1.33x
+       as many fights as tokens found) without ever being infinite. */
+    bossTokens: {
+      dropChance: { normalKill: 0.015, bossKill: 0.25 }
+    },
+
     /* ---- Items ----------------------------------------------
        See js/items.js for what generates from this data. Kept
        here (not in items.js) because these are the numbers
@@ -185,9 +205,15 @@
       // Given a drop happens, which rarity. Rows must sum to 1.
       // Epic is 0 on normal stages ON PURPOSE — that's the rule
       // that makes boss stages matter, not just chunkier HP.
+      // Rows must sum to 1. Epic used to be 0 on normal stages and
+      // 10% on bosses — but a whole playthrough only contains ~5
+      // boss encounters, so that produced 0-1 epics EVER and the
+      // tier was effectively dead content. Now bosses are the
+      // reliable source and trash is a lottery ticket, which is
+      // what makes long idle sessions able to produce one.
       rarityWeights: {
-        normal: { common: 0.85, rare: 0.15, epic: 0    },
-        boss:   { common: 0.40, rare: 0.50, epic: 0.10 }
+        normal: { common: 0.83, rare: 0.15, epic: 0.02 },
+        boss:   { common: 0.30, rare: 0.45, epic: 0.25 }
       },
 
       // Every item is built from a "power budget" of points that

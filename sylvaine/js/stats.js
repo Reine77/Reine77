@@ -48,6 +48,7 @@
       xp: 0,
       xpToNext: xpForLevel(1),
       gold: 0,
+      bossTokens: 0,   // spent to re-fight an already-beaten boss
 
       // ---- runtime combat state ----
       hp: CONFIG.heroBase.hp, // current HP; maxHp comes from stats.hp

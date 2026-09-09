@@ -430,6 +430,68 @@ drive build and hunting-ground decisions.
 `canWin` folds the matchup in per damage source, so the retreat gate can't
 march her into a fight the numbers say she loses.
 
+## Boss tokens and epic availability
+
+**The problem:** a whole playthrough contains only ~5 boss encounters (bosses
+are every 10 stages, she reaches ~50-60), and epics dropped only from bosses
+at 10%. Measured result: **0-1 epics in an entire 3-day run**, across every
+seed. The epic tier, and the "epics are the milestone reward" rule, was
+effectively dead content.
+
+**The fix — three levers, because they solve different problems:**
+
+| lever | before | after | why |
+| --- | --- | --- | --- |
+| Boss epic rate | 10% | 25% | bosses stay the reliable source |
+| Trash epic rate | 0% | 2% | the only high-volume kill source (~300-650/run vs ~5 bosses), so this is what makes idling produce epics |
+| Boss tokens | — | ~1.5%/kill, 25% from bosses | directed agency: re-fight a boss you choose |
+
+Measured after: **5-8 epics per playthrough**, and boss encounters went from
+5 to 10-19.
+
+### Why re-fighting old bosses is safe without any new guard rails
+
+Two rules already in the codebase make it self-limiting, so no anti-farm
+logic was needed:
+
+- **Item power rolls from the stage it dropped at**, so a stage-10 epic is
+  junk to a stage-50 hero. You can't farm easy bosses for good gear.
+- **The XP/gold relevance falloff already applies**, so an outleveled boss
+  pays ~0 XP and ~0 gold. A token fight is purely about the drop.
+
+The only thing worth enforcing is that she can actually *win*, so a rare
+token is never burned on a fight the numbers say she loses — and a challenge
+she's driven out of **refunds its token**.
+
+### Selectable, and tracked per boss identity
+
+The challenge picks a specific cleared boss *stage* (which pins both the
+identity and the loot's power level). Kills are counted in
+`totals.bossKillsById` keyed on boss **identity** — `maw`, not stage 20 —
+because Maw recurs at 20/60/100/… and a future "defeat Maw 10 times" elite
+pet unlock means the creature, not one stage.
+
+A token is a plain counter on the hero, **not** an inventory item, so none of
+this depends on the gear-inventory work.
+
+### This also fixes two things that weren't on the list
+
+- **Phase 9's whispers log** delivers one story fragment per boss defeat. At
+  5 defeats per run the entire story would have been 5 lines.
+- The four boss sprites were each being seen roughly once.
+
+### Two bugs found while building it
+
+- **`epicsFound` only counted epics that were EQUIPPED.** One that dropped
+  and wasn't an upgrade got sold and never counted, despite the name. Now
+  counted on the drop, with `epicsEquipped` tracking the subset separately.
+  (Re-measured: it did not change the original 0-1 diagnosis — with trash
+  epics at 0%, found and equipped were nearly identical.)
+- **`tools/checks.mjs` restored `stallTimeout` to a hardcoded `60`** after
+  temporarily raising it — but the real configured value is `240` since the
+  pacing retune. Roughly 20 tests had been silently running under the wrong
+  config. It now saves and restores the actual value.
+
 ## Phase plan
 
 - [x] **1** Game logic, console only

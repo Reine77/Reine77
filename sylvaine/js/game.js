@@ -70,6 +70,19 @@
       // flag without losing that distinction.
       farmTarget: null,
 
+      // A ONE-OFF re-fight of an already-beaten boss, bought with a
+      // token. Distinct from farmTarget: that one loops forever,
+      // this one runs a single fight and then puts her back exactly
+      // where she was (`returnStage`/`returnFarmTarget`).
+      bossChallenge: null,
+
+      // stage number -> true, for every boss stage she has beaten.
+      // Tracked explicitly rather than derived from the frontier:
+      // the derivation ("every multiple of 10 below your frontier")
+      // happens to be true today but is a subtle invariant to rely
+      // on, and this is what the challenge list reads.
+      clearedBossStages: {},
+
       hero: Stats.makeHero(),
       enemy: null,
 
@@ -98,7 +111,8 @@
         itemDrops: 0,
         itemsEquipped: 0,
         itemsSold: 0,
-        epicsFound: 0,
+        epicsFound: 0,     // epics that DROPPED
+        epicsEquipped: 0,  // of those, how many were actually an upgrade
 
         // baseTypes key -> how many of that creature she has killed,
         // ever, across the whole run. Grows keys as new creatures
@@ -109,7 +123,16 @@
         // wolves killed" is `killsByType.direWolf >= 100`. Tracking
         // it from now on means those phases don't start from zero
         // history on an existing save.
-        killsByType: {}
+        killsByType: {},
+
+        // Boss id -> times defeated ('maw': 3). Keyed on identity,
+        // not stage, because Maw appears at 20/60/100/... and a
+        // future "defeat Maw 10 times" unlock means the creature,
+        // not one particular stage.
+        bossKillsById: {},
+
+        tokensFound: 0,
+        tokensSpent: 0
       },
 
       // Event hooks. Later phases subscribe to these to draw
@@ -372,7 +395,14 @@
     var s = Stats.computeStats(hero);
 
     state.totals.kills++;
-    if (enemy.isBoss) state.totals.bossKills++;
+    if (enemy.isBoss) {
+      state.totals.bossKills++;
+      state.clearedBossStages[enemy.stage] = true;
+      if (enemy.bossId) {
+        var byBoss = state.totals.bossKillsById;
+        byBoss[enemy.bossId] = (byBoss[enemy.bossId] || 0) + 1;
+      }
+    }
     if (enemy.baseType) {
       var byType = state.totals.killsByType;
       byType[enemy.baseType] = (byType[enemy.baseType] || 0) + 1;
@@ -419,6 +449,18 @@
 
     emit(state, 'enemyKilled', enemy);
 
+    // Boss token. Rolled on every kill; bosses are far more
+    // generous, so the challenge loop partly refills itself.
+    var tokenChance = enemy.isBoss
+      ? CONFIG.bossTokens.dropChance.bossKill
+      : CONFIG.bossTokens.dropChance.normalKill;
+    if (state.rng.chance(tokenChance)) {
+      hero.bossTokens++;
+      state.totals.tokensFound++;
+      state.log.push('token', 'A boss token drops. (' + hero.bossTokens + ' held)', state.time);
+      emit(state, 'tokenFound', hero.bossTokens);
+    }
+
     // Phase 2 will hang the drop roll off this same point.
     if (Sylvaine.Items && typeof Sylvaine.Items.onKill === 'function') {
       Sylvaine.Items.onKill(state, enemy);
@@ -431,6 +473,14 @@
   }
 
   function advance(state, enemy) {
+    // A boss challenge outranks everything: it is a single fight,
+    // so finishing it puts her back exactly where she was rather
+    // than advancing her or leaving her parked on a boss stage.
+    if (state.bossChallenge !== null) {
+      endBossChallenge(state, 'cleared');
+      return;
+    }
+
     // A player-chosen hunting ground outranks everything else: she
     // stays on this stage, does not climb, and does NOT re-test a
     // boss that previously blocked her. Re-testing would yank her
@@ -556,6 +606,98 @@
     return true;
   }
 
+  /* ---- Boss challenges (spend a token, re-fight a boss) ------
+     Validation returns a reason string, same contract as
+     canFarmStage and runes' canPurchase, so the UI can explain
+     itself instead of just refusing.
+
+     Note what is NOT checked here: nothing stops her challenging a
+     low boss for weak loot. It does not need blocking, because
+     item power rolls from the stage it dropped at and the XP/gold
+     relevance falloff already zeroes the currencies — a stage-10
+     token fight is simply its own punishment. The only rule worth
+     enforcing is that she can actually win, so a rare token is
+     never burned on a fight the numbers say she loses.          */
+  function canChallengeBoss(state, stage) {
+    if (typeof stage !== 'number' || !isFinite(stage) || Math.floor(stage) !== stage) {
+      return { ok: false, reason: 'pick a boss stage' };
+    }
+    if (!Enemies.isBossStage(stage)) {
+      return { ok: false, reason: 'stage ' + stage + ' is not a boss stage' };
+    }
+    if (!state.clearedBossStages[stage]) {
+      return { ok: false, reason: 'you have not beaten the stage ' + stage + ' boss yet' };
+    }
+    if (state.hero.bossTokens < 1) {
+      return { ok: false, reason: 'no boss tokens' };
+    }
+    if (state.bossChallenge !== null) {
+      return { ok: false, reason: 'already in a boss challenge' };
+    }
+    // Probe with a THROWAWAY rng, never state.rng. This function is
+    // called from the render loop every frame to decide whether the
+    // button is enabled; if it consumed the game's rng it would
+    // advance the seeded stream 60 times a second and make every
+    // run non-reproducible. Boss spawns happen not to draw from rng
+    // today, but relying on that would be an invisible tripwire for
+    // whoever edits enemies.js next.
+    var probe = Enemies.spawn(stage, Sylvaine.makeRng(stage));
+    if (!canWin(state, probe)) {
+      return { ok: false, reason: 'too strong right now — the token would be wasted' };
+    }
+    return { ok: true, reason: null };
+  }
+
+  function startBossChallenge(state, stage) {
+    var check = canChallengeBoss(state, stage);
+    if (!check.ok) {
+      state.log.push('warn', 'Cannot challenge stage ' + stage + ': ' + check.reason, state.time);
+      return false;
+    }
+
+    state.hero.bossTokens--;
+    state.totals.tokensSpent++;
+
+    // Remember exactly what she was doing so the one-off fight
+    // doesn't quietly cancel a hunting ground or lose her place.
+    state.bossChallenge = {
+      stage: stage,
+      returnStage: state.stage,
+      returnFarmTarget: state.farmTarget
+    };
+    state.farmTarget = null;   // suspended, restored on the way out
+    state.stage = stage;
+    state.enemy = null;
+    state.phase = 'spawning';
+    state.phaseTimer = CONFIG.combat.spawnDelay;
+
+    var boss = Enemies.bossAtStage(stage);
+    state.log.push('boss', 'Token spent — challenging ' + (boss ? boss.name : 'stage ' + stage) +
+      '. (' + state.hero.bossTokens + ' tokens left)', state.time);
+    emit(state, 'bossChallengeStarted', state.bossChallenge);
+    return true;
+  }
+
+  // Called when the challenge boss dies, and also when she is forced
+  // out of one. `outcome` is 'cleared' or 'failed'.
+  function endBossChallenge(state, outcome) {
+    var ch = state.bossChallenge;
+    if (!ch) return;
+    state.bossChallenge = null;
+    state.farmTarget = ch.returnFarmTarget;
+    state.stage = ch.returnStage;
+
+    if (outcome === 'failed') {
+      // She was driven off, so give the token back. Losing a rare
+      // resource to a fight the winnability check said she'd win is
+      // the game's mistake, not the player's.
+      state.hero.bossTokens++;
+      state.totals.tokensSpent--;
+      state.log.push('warn', 'Driven off — the boss token is returned.', state.time);
+    }
+    emit(state, 'bossChallengeEnded', outcome);
+  }
+
   function gainXp(state, amount) {
     var hero = state.hero;
     if (amount <= 0) return;                       // outleveled content grants nothing
@@ -595,6 +737,12 @@
     var wasBossStage = state.enemy && state.enemy.isBoss;
 
     state.totals.retreats++;
+
+    // A failed boss challenge refunds its token and restores where
+    // she was, before the normal retreat bookkeeping runs.
+    if (state.bossChallenge !== null) {
+      endBossChallenge(state, 'failed');
+    }
 
     // If the player had parked her on a hunting ground and it turned
     // out to be lethal, release the lock. Keeping it would put her
@@ -642,6 +790,8 @@
 
     // Hunting grounds (player-chosen farming)
     canFarmStage: canFarmStage,
+    canChallengeBoss: canChallengeBoss,
+    startBossChallenge: startBossChallenge,
     setFarmTarget: setFarmTarget,
     clearFarmTarget: clearFarmTarget,
     xpRelevance: xpRelevance

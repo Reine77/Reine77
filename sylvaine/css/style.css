@@ -496,3 +496,21 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 }
 .enemy-tags .weak   { color: #e0a04a; border-color: #6b4a1f; }
 .enemy-tags .resist { color: #7ab0d9; border-color: #2f4f66; }
+
+/* ---- boss challenge panel ------------------------------------- */
+#tokenLine { font-size: .85rem; margin-bottom: .5rem; }
+#tokenLine .tokens { color: var(--gold); font-weight: 600; }
+#bossControls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; font-size: .8rem; }
+#bossControls label { color: var(--text-dim); }
+#bossSelect {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: .25rem .4rem; font: inherit; max-width: 22em;
+}
+#bossControls button {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: .25rem .6rem; font: inherit; cursor: pointer;
+}
+#bossControls button:disabled { opacity: .4; cursor: not-allowed; }
+#bossControls button:not(:disabled):hover { border-color: var(--gold); }
+#bossHint { margin-top: .45rem; font-size: .72rem; color: var(--text-dim); min-height: 1.4em; }
+#bossHint.warn { color: var(--enemy); }

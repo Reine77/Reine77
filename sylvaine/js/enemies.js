@@ -166,13 +166,30 @@
      Cycled by boss index, so boss 5 reuses boss 1's art with a
      treatment. Four distinct sprites cover an endless game.   */
   var bosses = [
-    { name: 'Gorruk the Gate-Breaker', sprite: 'boss_gorruk.png', scale: 1.6, hpMult: 1.00, damageMult: 1.00, attackSpeedMult: 0.65, weakTo: ['fire'], resists: ['earth', 'dark'] },
-    { name: 'Maw of the Eastern Pass', sprite: 'boss_maw.png',    scale: 1.7, hpMult: 1.15, damageMult: 0.90, attackSpeedMult: 0.80, weakTo: ['holy'], resists: ['fire', 'dark'] },
-    { name: 'The Unifier',             sprite: 'boss_unifier.png',scale: 1.5, hpMult: 0.90, damageMult: 1.30, attackSpeedMult: 0.70, weakTo: ['holy'], resists: ['dark', 'fire', 'wind'] },
-    { name: 'Crownwearer',             sprite: 'boss_crown.png',  scale: 1.8, hpMult: 1.25, damageMult: 1.15, attackSpeedMult: 0.60, weakTo: [],       resists: ['physical', 'holy', 'dark'] }
+    { id: 'gorruk',  name: 'Gorruk the Gate-Breaker', sprite: 'boss_gorruk.png', scale: 1.6, hpMult: 1.00, damageMult: 1.00, attackSpeedMult: 0.65, weakTo: ['fire'], resists: ['earth', 'dark'] },
+    { id: 'maw',     name: 'Maw of the Eastern Pass', sprite: 'boss_maw.png',    scale: 1.7, hpMult: 1.15, damageMult: 0.90, attackSpeedMult: 0.80, weakTo: ['holy'], resists: ['fire', 'dark'] },
+    { id: 'unifier', name: 'The Unifier',             sprite: 'boss_unifier.png',scale: 1.5, hpMult: 0.90, damageMult: 1.30, attackSpeedMult: 0.70, weakTo: ['holy'], resists: ['dark', 'fire', 'wind'] },
+    { id: 'crown',   name: 'Crownwearer',             sprite: 'boss_crown.png',  scale: 1.8, hpMult: 1.25, damageMult: 1.15, attackSpeedMult: 0.60, weakTo: [],       resists: ['physical', 'holy', 'dark'] }
   ];
 
   var bossTreatmentCycle = ['plain', 'bloodfang', 'frost', 'elite', 'voidtouch'];
+
+  // Which boss definition sits at a given stage, without spawning
+  // anything — the boss-challenge UI needs to list names and the
+  // combat code shouldn't have to be involved to get them.
+  function bossAtStage(stage) {
+    if (!isBossStage(stage)) return null;
+    var index = Math.floor(stage / CONFIG.boss.everyNStages) - 1;
+    if (index < 0) return null;
+    var art = bosses[index % bosses.length];
+    var cycle = Math.floor(index / bosses.length);
+    var treatment = treatments[bossTreatmentCycle[cycle % bossTreatmentCycle.length]];
+    return {
+      id: art.id,
+      name: art.name + (treatment.suffix ? ' (' + treatment.suffix + ')' : ''),
+      baseName: art.name
+    };
+  }
 
   function isBossStage(stage) {
     return stage % CONFIG.boss.everyNStages === 0;
@@ -215,7 +232,7 @@
   function spawn(stage, rng) {
     var C = CONFIG;
     var boss = isBossStage(stage);
-    var art, name, treatment, baseType;
+    var art, name, treatment, baseType, bossId = null;
 
     if (boss) {
       var bossIndex = Math.floor(stage / C.boss.everyNStages) - 1;
@@ -224,6 +241,7 @@
       treatment = treatments[bossTreatmentCycle[cycle % bossTreatmentCycle.length]];
       name = art.name + (treatment.suffix ? ' (' + treatment.suffix + ')' : '');
       baseType = null; // bosses are counted separately (totals.bossKills)
+      bossId = art.id;
     } else {
       var variant = pickWeighted(eligibleVariants(stage), rng);
       art = baseTypes[variant.base];
@@ -249,6 +267,12 @@
       name: name,
       stage: stage,
       isBoss: boss,
+
+      // Which of the four bosses this is ('gorruk', 'maw', ...),
+      // stable across every stage that boss appears at. A later
+      // "defeat Maw 10 times" unlock counts THIS, not the stage,
+      // because Maw shows up at 20, 60, 100, ...
+      bossId: bossId,
 
       // Elemental tags. An attack carries ONE attribute, so at most
       // one of these can ever apply to a given hit — resistances
@@ -292,6 +316,7 @@
     variants: variants,
     bosses: bosses,
     isBossStage: isBossStage,
+    bossAtStage: bossAtStage,
     spawn: spawn
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
