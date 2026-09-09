@@ -75,6 +75,7 @@
   };
 
   function makeRenderer(state) {
+    var CONFIG = Sylvaine.CONFIG;
     var Stats = Sylvaine.Stats;
     var Runes = Sylvaine.Runes;
     var Items = Sylvaine.Items;
@@ -114,7 +115,6 @@
       statEvade:   document.getElementById('statEvade'),
       statReduc:   document.getElementById('statReduc'),
       statHeal:    document.getElementById('statHeal'),
-      gearLine:    document.getElementById('gearLine'),
 
       farmStatus:  document.getElementById('farmStatus'),
       farmInput:   document.getElementById('farmInput'),
@@ -128,15 +128,24 @@
       bossHint:    document.getElementById('bossHint'),
 
       runeList:    document.getElementById('runeList'),
-      logList:     document.getElementById('logList')
+      logList:     document.getElementById('logList'),
+
+      equippedList:    document.getElementById('equippedList'),
+      autoSellCommon:  document.getElementById('autoSellCommon'),
+      autoSellRare:    document.getElementById('autoSellRare'),
+      autoSellEpic:    document.getElementById('autoSellEpic'),
+      inventoryCount:  document.getElementById('inventoryCount'),
+      inventoryList:   document.getElementById('inventoryList')
     };
 
     var lastPushCount = -1; // -1 forces an initial render even if the log is empty
     var runeRows = {};      // id -> { row, button, status } built once, updated in place
+    var lastInventorySig = null; // forces an initial inventory render
 
     buildRuneList();
     wireFarmControls();
     wireBossControls();
+    wireAutoSellControls();
     setupImageFallback(el.heroSprite, el.heroPortrait);
     setupImageFallback(el.enemySprite, el.enemyPortrait);
     setupImageFallback(el.swordTrail, null); // trail has no fallback text to reveal
@@ -529,6 +538,170 @@
       });
     }
 
+    /* =========================================================
+       GEAR PANEL (step 4: real inventory, manual equip)
+       -------------------------------------------------------
+       Every item row — equipped or in the bag — gets the same
+       small icon reservation, built by makeItemIcon below. No art
+       exists yet, so the <img> degrades to the text fallback via
+       the same load/error listener pattern setupImageFallback
+       already established for the hero/enemy portraits; the point
+       is that the LAYOUT is real now, so dropping in a real icon
+       sheet later is a asset-only change, not a markup change.
+       ========================================================= */
+    function makeItemIcon(item) {
+      var box = document.createElement('div');
+      box.className = 'item-icon rarity-' + item.rarity;
+
+      var img = document.createElement('img');
+      img.alt = '';
+      img.src = 'assets/icons/' + item.slot + '.png';
+
+      var fallback = document.createElement('span');
+      fallback.className = 'icon-fallback';
+      fallback.textContent = item.slot === 'weapon' ? 'WPN' : 'ARM';
+
+      img.addEventListener('load', function () {
+        img.classList.add('loaded');
+        box.classList.add('has-icon');
+      });
+      img.addEventListener('error', function () {
+        img.classList.remove('loaded');
+        box.classList.remove('has-icon');
+      });
+
+      box.appendChild(img);
+      box.appendChild(fallback);
+      return box;
+    }
+
+    function wireAutoSellControls() {
+      var boxes = { common: el.autoSellCommon, rare: el.autoSellRare, epic: el.autoSellEpic };
+      Object.keys(boxes).forEach(function (rarity) {
+        boxes[rarity].addEventListener('change', function () {
+          Items.setAutoSell(state, rarity, boxes[rarity].checked);
+          update(); // same reasoning as the rune/farm buttons — reflect it now
+        });
+      });
+    }
+
+    function updateEquippedList() {
+      el.equippedList.innerHTML = '';
+      ['weapon', 'armor'].forEach(function (slot) {
+        var item = state.hero.equipped[slot];
+        var row = document.createElement('div');
+        row.className = 'equipped-row';
+
+        if (item) {
+          row.appendChild(makeItemIcon(item));
+          var name = document.createElement('span');
+          name.className = 'item-name';
+          name.textContent = item.name;
+          var mods = document.createElement('span');
+          mods.className = 'item-mods';
+          mods.textContent = '(' + Items.describeMods(item.mods) + ')';
+          row.appendChild(name);
+          row.appendChild(mods);
+        } else {
+          var iconStub = document.createElement('div');
+          iconStub.className = 'item-icon';
+          row.appendChild(iconStub);
+          var empty = document.createElement('span');
+          empty.className = 'item-empty';
+          empty.textContent = slot + ': (none)';
+          row.appendChild(empty);
+        }
+        el.equippedList.appendChild(row);
+      });
+    }
+
+    function updateAutoSellControls() {
+      var policy = state.hero.autoSellRarities;
+      el.autoSellCommon.checked = !!policy.common;
+      el.autoSellRare.checked   = !!policy.rare;
+      el.autoSellEpic.checked   = !!policy.epic;
+    }
+
+    function updateInventoryList() {
+      var bag = state.hero.inventory;
+      el.inventoryCount.textContent = '(' + bag.length + '/' + CONFIG.items.inventoryCap + ')';
+
+      // Rebuild only when the CONTENTS actually changed — a cheap
+      // signature (ids in order) rather than a deep diff, same
+      // "guard the expensive part with a change check" shape as
+      // updateLog's totalPushed comparison above.
+      var sig = bag.map(function (it) { return it.id; }).join(',');
+      if (sig === lastInventorySig) return;
+      lastInventorySig = sig;
+
+      el.inventoryList.innerHTML = '';
+      if (!bag.length) {
+        var hint = document.createElement('div');
+        hint.className = 'item-empty-hint';
+        hint.textContent = 'Nothing in the bag yet.';
+        el.inventoryList.appendChild(hint);
+        return;
+      }
+
+      bag.forEach(function (item) {
+        var row = document.createElement('div');
+        row.className = 'item-row rarity-' + item.rarity;
+
+        row.appendChild(makeItemIcon(item));
+
+        var name = document.createElement('span');
+        name.className = 'item-name';
+        name.textContent = item.name;
+        var mods = document.createElement('span');
+        mods.className = 'item-mods';
+        mods.textContent = Items.describeMods(item.mods);
+        var nameWrap = document.createElement('span');
+        nameWrap.appendChild(name);
+        nameWrap.appendChild(document.createTextNode(' '));
+        nameWrap.appendChild(mods);
+        row.appendChild(nameWrap);
+
+        var rarity = document.createElement('span');
+        rarity.className = 'item-rarity';
+        rarity.textContent = item.rarity;
+        row.appendChild(rarity);
+
+        var power = document.createElement('span');
+        power.className = 'item-power';
+        power.textContent = Items.sellValueOf(item) + 'g';
+        row.appendChild(power);
+
+        var actions = document.createElement('span');
+        actions.className = 'item-actions';
+
+        var equipBtn = document.createElement('button');
+        equipBtn.textContent = 'Equip';
+        equipBtn.addEventListener('click', function () {
+          Items.equipItem(state, item.id);
+          update();
+        });
+
+        var sellBtn = document.createElement('button');
+        sellBtn.textContent = 'Sell';
+        sellBtn.addEventListener('click', function () {
+          Items.sellItem(state, item.id);
+          update();
+        });
+
+        actions.appendChild(equipBtn);
+        actions.appendChild(sellBtn);
+        row.appendChild(actions);
+
+        el.inventoryList.appendChild(row);
+      });
+    }
+
+    function updateGearPanel() {
+      updateEquippedList();
+      updateAutoSellControls();
+      updateInventoryList();
+    }
+
     // Only rebuilds when state.log.totalPushed has actually moved —
     // see log.js's header comment for why that's the right signal
     // instead of entries.length (which stops growing once capped).
@@ -636,14 +809,10 @@
         ? s.healPower.toFixed(1) + ' / ' + s.healCooldown.toFixed(1) + 's'
         : 'locked';
 
-      var eq = hero.equipped;
-      el.gearLine.innerHTML = 'Weapon: <span class="item-name">' +
-        (eq.weapon ? eq.weapon.name : 'none') + '</span> &nbsp; Armor: <span class="item-name">' +
-        (eq.armor ? eq.armor.name : 'none') + '</span>';
-
       updateFarmPanel();
       updateBossPanel();
       updateRuneList(hero);
+      updateGearPanel();
       updateLog();
     }
 

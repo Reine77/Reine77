@@ -143,9 +143,27 @@
       <div id="bossHint"></div>
     </div>
 
+    <!-- Gear (step 4): a real inventory, not auto-equip. Equipped
+         weapon/armor at the top, the inventory (with manual equip/
+         sell) and the auto-sell-by-rarity policy below. Every row
+         reserves a small square for an item icon — no art asset
+         exists yet, so it degrades to blank/fallback the same way
+         the hero/enemy sprites do (see render.js's
+         setupImageFallback), but the layout space is real now so a
+         later icon sheet just drops in without a UI change. -->
     <div class="panel">
-      <h2>Hero</h2>
-      <div id="gearLine"></div>
+      <h2>Gear</h2>
+      <div id="equippedList"></div>
+
+      <h3>Auto-sell on drop</h3>
+      <div id="autoSellControls">
+        <label><input type="checkbox" id="autoSellCommon"> common</label>
+        <label><input type="checkbox" id="autoSellRare"> rare</label>
+        <label><input type="checkbox" id="autoSellEpic"> epic</label>
+      </div>
+
+      <h3>Inventory <span id="inventoryCount"></span></h3>
+      <div id="inventoryList"></div>
     </div>
 
     <!-- Basic rune-buy list — NOT the real tree UI (that's Phase

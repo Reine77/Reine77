@@ -111,6 +111,7 @@
         itemDrops: 0,
         itemsEquipped: 0,
         itemsSold: 0,
+        itemsStashed: 0,   // dropped, not auto-sold -> added to the inventory
         epicsFound: 0,     // epics that DROPPED
         epicsEquipped: 0,  // of those, how many were actually an upgrade
 

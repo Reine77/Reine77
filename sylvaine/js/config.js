@@ -252,15 +252,50 @@
       // jumps" means for the equipment channel specifically.
       rarityBudgetMult: { common: 1.0, rare: 2.5, epic: 5.0 },
 
-      // How many separate stat lines an item rolls. More lines on
-      // a higher rarity spreads the (much bigger) budget across
-      // more stats, so a rare/epic item is stronger AND more
-      // rounded, not just one huge number in one stat.
-      affixCount: { common: 1, rare: 2, epic: 3 },
+      // Diablo-style rarity shape (the gear rework, step 4 of the
+      // build-strategy work): EVERY item, any rarity, carries the
+      // same one implicit base line (damage for a weapon, hp for
+      // armor — the "just atk/def" the common tier is entirely
+      // made of). Rarity ADDS affix lines on top of that base, and
+      // every added line is a PERCENT modifier drawn from the
+      // physical/magic/neutral damage-percent system step 2 built
+      // (plus the specific elements, now meaningful since step 3
+      // lets attack/spell attributes actually change). So a rare
+      // is "the base stat, plus one build-defining line" and an
+      // epic is "the base stat, plus two" — never more lines, more
+      // POWER per line as the budget below grows with stage.
+      percentAffixCount: { common: 0, rare: 1, epic: 2 },
+
+      // The pool a rolled percent line is drawn from. `damagePercent`
+      // is the "neutral" (all-attribute) option; physical/magic are
+      // the two broad categories; the rest are the specific elements
+      // from CONFIG.attributes.all (built in items.js, not hand-typed
+      // here, so a new attribute added to that list is automatically
+      // eligible with no second edit needed).
+      percentAffixPool: ['damagePercent', 'physicalDamagePercent', 'magicDamagePercent'],
 
       // Gold refunded for auto-selling an item (either a drop that
       // wasn't an upgrade, or gear being replaced by a better one).
       sellGoldPerPower: 0.6,
+
+      // Which rarities resolve themselves automatically the instant
+      // they drop (sold on the spot, no inventory slot spent) versus
+      // which ones wait in the inventory for a manual equip/sell
+      // decision. Per the spec: "you can set auto sell for lower
+      // rarity like common." This is only the STARTING policy —
+      // stats.js's makeHero() copies it onto hero.autoSellRarities,
+      // which items.js's setAutoSell can flip per-rarity at runtime,
+      // same "config is the default, hero owns the live value" split
+      // the elemental attributes already established.
+      autoSellDefault: { common: true, rare: false, epic: false },
+
+      // Soft cap on how many items can sit in the inventory at once.
+      // Without one, a long unattended run with auto-sell off would
+      // grow the array forever. When a new item would push the
+      // inventory over this, the WEAKEST item currently in it (by
+      // computePower, not necessarily the new one) is auto-sold to
+      // make room — see items.js's enforceInventoryCap.
+      inventoryCap: 40,
 
       // "Power" = points of budget per 1 unit of a stat. Used BOTH
       // to size an item's rolled stats AND to compare two items
@@ -272,6 +307,13 @@
       // never pick an attackSpeed item. These weights are a rough,
       // eyeballed DPS/HP equivalence, not a precise formula — retune
       // them if auto-equip starts making choices that feel wrong.
+      // percentDamageWeight applies to EVERY damage-percent affix
+      // (damagePercent/physicalDamagePercent/magicDamagePercent and
+      // every <element>DamagePercent) — one shared weight rather
+      // than nine near-identical entries, since they're all "the
+      // same kind of line" that just differ in which bucket they
+      // land in (see stats.js's damagePercentFor). items.js reads
+      // this once and fans it out to every percent key it builds.
       powerWeights: {
         damage:        1,
         attackSpeed:   50,
@@ -279,7 +321,8 @@
         critMult:      80,
         spellPower:    1,
         spellCooldown: 40,   // per 1 second of REDUCTION
-        hp:            0.3
+        hp:            0.3,
+        percentDamageWeight: 150
       },
 
       // Per-AFFIX ceiling on a stat's rolled value, checked before
@@ -297,7 +340,17 @@
         attackSpeed:   0.6,
         critChance:    0.20,
         critMult:      0.50,
-        spellCooldown: 3.0   // seconds of reduction, from one affix
+        spellCooldown: 3.0,  // seconds of reduction, from one affix
+
+        // Same reasoning as critChance/critMult above, applied to
+        // every damage-percent line a rare/epic can roll: percent
+        // stats have a natural "this is already very strong" ceiling
+        // that damage/spellPower/hp don't, so the exponential budget
+        // curve has to be capped per line rather than left to produce
+        // a nonsense "+400% fire damage" affix at high stages. One
+        // shared cap (not nine near-identical entries) — see
+        // percentDamageWeight's comment above for why.
+        percentDamageCap: 0.35
       }
     },
 

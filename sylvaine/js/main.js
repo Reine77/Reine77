@@ -76,10 +76,15 @@
         'S.report()       -> totals summary',
         'S.reset(seed)    -> start over with a seed',
         '',
-        '-- Phase 2: items --',
-        "S.inventory()             -> what's equipped now",
+        '-- gear (step 4: real inventory, manual equip) --',
+        "S.inventory()             -> what's equipped + what's in the bag",
         "S.giveItem('weapon'|'armor', 'common'|'rare'|'epic')",
-        '                          -> force-roll + equip a test item',
+        '                          -> force-roll a test item into the inventory',
+        "S.equipItem(itemId)       -> equip from the inventory (old piece",
+        '                             returns to the inventory, not sold)',
+        'S.sellItem(itemId)        -> sell one inventory item for gold',
+        "S.sellAllOfRarity('common') -> bulk-sell every item of one rarity",
+        "S.setAutoSell('common', true) -> toggle a rarity's auto-sell policy",
         'S.rollLoot(n)             -> simulate n drop rolls at the current',
         '                             stage, report rarity/slot counts',
         '',
@@ -162,7 +167,8 @@
         kills:    state.totals.kills,
         bosses:   state.totals.bossKills,
         items:    state.totals.itemDrops + ' found / ' + state.totals.itemsEquipped +
-                  ' equipped / ' + state.totals.epicsFound + ' epic',
+                  ' equipped / ' + state.hero.inventory.length + ' in bag / ' +
+                  state.totals.epicsFound + ' epic',
         retreats: state.totals.retreats,
         runes:    Runes.totalRanks(state.hero) + '/' +
                   (Runes.NODES.length * Runes.MAX_RANK) + ' ranks'
@@ -182,33 +188,47 @@
             '  (power ' + Items.computePower(item).toFixed(1) + ')');
         }
       });
+
+      var bag = state.hero.inventory;
+      if (!bag.length) {
+        console.log('inventory: (empty)');
+        return;
+      }
+      console.table(bag.map(function (item) {
+        return {
+          id: item.id,
+          slot: item.slot,
+          name: item.name,
+          rarity: item.rarity,
+          mods: Items.describeMods(item.mods),
+          power: Items.computePower(item).toFixed(1),
+          sellsFor: Items.sellValueOf(item)
+        };
+      }));
     },
 
-    // Force-generates and equips a test item, bypassing the drop
-    // roll entirely — for checking how an item LOOKS and feels
-    // without waiting on the RNG to hand you one. Runs through the
-    // exact same equip/sell path a real drop would (so it also
-    // sells whatever it replaces), just skipping rollDrop's chance
-    // and rarity rolls.
+    // Force-generates a test item and drops it straight into the
+    // inventory, bypassing the drop roll entirely — for checking
+    // how an item LOOKS and feels without waiting on the RNG to
+    // hand you one, or manually equipping it with S.equipItem(id).
     giveItem: function (slot, rarity) {
       slot = slot === 'armor' ? 'armor' : 'weapon';
       rarity = ['common', 'rare', 'epic'].indexOf(rarity) === -1 ? 'common' : rarity;
 
       var item = Items.rollItem(state.stage, slot, rarity, state.rng);
-      var hero = state.hero;
-      var equipped = hero.equipped[slot];
+      state.hero.inventory.push(item);
+      Items.enforceInventoryCap(state);
 
-      if (equipped) {
-        var refund = Items.sellValueOf(equipped);
-        hero.gold += refund;
-        console.log('sold previous ' + slot + ' (' + equipped.name + ') for ' + refund + ' gold');
-      }
-      hero.equipped[slot] = item;
-      Stats.markDirty(hero);
-
-      console.log('equipped: ' + item.name + ' [' + item.rarity + ']  ' + Items.describeMods(item.mods));
+      console.log('added to inventory: ' + item.name + ' [' + item.rarity + '] (' +
+        item.id + ')  ' + Items.describeMods(item.mods));
       return item;
     },
+
+    // Manual equip/sell — the whole point of a real inventory.
+    equipItem: function (itemId) { return Items.equipItem(state, itemId); },
+    sellItem: function (itemId) { return Items.sellItem(state, itemId); },
+    sellAllOfRarity: function (rarity) { return Items.sellAllOfRarity(state, rarity); },
+    setAutoSell: function (rarity, enabled) { return Items.setAutoSell(state, rarity, enabled); },
 
     // Runs the drop table n times at the CURRENT stage without
     // touching hero/gold/equipment — pure statistics, so you can

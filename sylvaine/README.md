@@ -755,10 +755,121 @@ correctly flipping a losing matchup to winning once evade/DR/heal are
 present, the branch base-cost budget staying at 2600 each, and every
 existing blade/arcane-named test renamed to physical/magic in place.
 
+## Gear rework (step 4 of the build-strategy rework)
+
+The last of the four build-strategy steps. The original gear system
+auto-resolved every drop instantly — beats what's equipped, auto-equip;
+otherwise auto-sell — with no inventory screen at all. That made gear pure
+noise: whatever the code decided was "better" is what she wore, no choice in
+it. This is the step that finally gives gear a decision, per the spec's
+explicit ask for "standard Diablo gear... a simple gear selection... you can
+set auto sell for lower rarity like common" — the option the user picked
+over auto-equip-only when the tension between the two was raised earlier.
+
+### The Diablo-style rarity shape
+
+Every item, any rarity, carries the same one **implicit base line** —
+`damage` for a weapon, `hp` for armor, exactly the "just atk/def" the common
+tier asked for. Rarity adds **percent-modifier lines** on top of that base,
+drawn from the physical/magic/neutral damage-percent system step 2 built:
+
+- **common** — base line only, 0 extra lines.
+- **rare** — base line + 1 percent line.
+- **epic** — base line + 2 percent lines.
+
+The percent pool is `damagePercent` ("neutral" — the `all` bucket),
+`physicalDamagePercent`, `magicDamagePercent`, plus every **specific
+element** from `CONFIG.attributes.all` (`fireDamagePercent`,
+`windDamagePercent`, ...). This is the first thing in the game that actually
+populates the percent-mod keys step 2 left deliberately inert, and — because
+step 3 made attack/spell attributes mutable — the first thing that makes a
+specific-element affix a real, sometimes-relevant roll instead of dead
+weight (a `holyDamagePercent` weapon affix does nothing for her default
+physical attack, but is exactly what an `earth`-converted build, or a future
+holy-converted one, would want).
+
+Every percent-damage line shares one weight and one cap
+(`items.powerWeights.percentDamageWeight` / `items.statCaps.percentDamageCap`,
+currently 0.35) rather than nine near-identical config entries — same
+"percentage stats have a natural ceiling" reasoning `critChance`/`critMult`
+already established, just applied to a whole family of keys at once instead
+of one at a time.
+
+### What's still automatic, and what isn't
+
+The **drop roll** (does a kill drop anything, at what rarity) is unchanged
+— still pure RNG off the same table as before. What changed is what happens
+**after** a drop: `hero.autoSellRarities` (default `{ common: true, rare:
+false, epic: false }`, per the spec's "auto sell for lower rarity like
+common") decides whether a rarity resolves itself immediately — sold on the
+spot for gold, same as the old behaviour always did for everything — or
+lands in `hero.inventory` and waits.
+
+Waiting items get resolved by hand, through four new `items.js` functions
+that are all the game rules ever needed to add: `equipItem` (swaps in an
+item; whatever it replaces goes **back into the inventory**, not sold —
+switching gear to try something shouldn't cost you the old piece),
+`sellItem`, `sellAllOfRarity` (bulk-sell one rarity — the "I just turned
+auto-sell off a while back and there's a pile of these now" button), and
+`setAutoSell` (flips the policy going forward only — it deliberately does
+**not** retroactively sell what's already sitting in the inventory; a
+settings change having a surprise side effect would be exactly the kind of
+thing this project's own "measure, don't assume" discipline exists to catch,
+so it just doesn't do that at all).
+
+A soft `inventoryCap` (40) keeps a long unattended run's inventory array
+from growing forever when auto-sell is off: pushing an item past the cap
+auto-sells the **weakest** item currently held (by `computePower`, not
+necessarily the new one), so an old, unwanted common always loses to a
+fresh rare rather than the newest find getting evicted by insertion order.
+
+### Reserved icon space, no art yet
+
+Per an explicit ask while building this: every item row — equipped or in
+the inventory — reserves a small (26px) square for an icon. No icon art
+exists yet, so it degrades the same way the hero/enemy sprites already do:
+an `<img>` pointing at `assets/icons/<slot>.png` that stays invisible until
+it actually loads, with a tiny text fallback (`WPN`/`ARM`) shown instead,
+using the exact same load/error listener shape `render.js`'s
+`setupImageFallback` already established for the portraits. The point is
+that the *layout* is real now — dropping in a real icon sheet later is an
+asset-only change, not a UI rewrite.
+
+### Verified, not assumed
+
+Re-ran `tools/balance.mjs` after this change specifically because it was a
+plausible way to quietly break the level-100 economy calibration: the old
+auto-resolve system put item-sell gold in the hero's pocket immediately for
+every non-upgrade, and `balance.mjs`'s stand-in buying-policy bot never
+manually equips or sells anything, so switching rare/epic to
+inventory-and-wait could have meant that gold silently stopped flowing in
+the harness's own measurement. Measured directly: **1.17×** (previously
+1.16×), unchanged within rounding — item-sell gold was never a significant
+fraction of the total next to kill rewards, so no rebalancing was needed.
+
+`tools/checks.mjs` grew from 176 to 211 assertions: every rarity always
+carries its base line, the exact percent-line count per rarity holds (not
+just on average — every single roll), percent lines are real buckets and
+respect the shared cap, drops resolve as auto-sold XOR stashed (never both,
+never neither), a manual equip swap returns the displaced piece to the
+inventory rather than selling it, selling never touches equipped gear,
+`sellAllOfRarity` and the auto-sell toggle both behave (including the "does
+NOT retroactively sell" contract), and inventory-cap eviction removes the
+deliberately-weakest item even when a much stronger one was pushed in at
+the same time. One existing test (`tools/checks.mjs`'s boss-token check)
+also needed its seed changed after this rework — not because of a bug, but
+because item generation now consumes a different number of `rng` draws per
+roll, which shifts every later random outcome in a run for a FIXED seed
+(the same effect step 3 hit with `highestNormalCleared`, this time
+confirmed harmless by sampling neighbouring seeds directly rather than
+assumed).
+
 ## Phase plan
 
 - [x] **1** Game logic, console only
-- [x] **2** Items, `computeStats` aggregation, drop table, auto-equip/auto-sell
+- [x] **2** Items, `computeStats` aggregation, drop table (originally
+      auto-equip/auto-sell — replaced by a real inventory + manual equip in
+      the gear rework above)
 - [x] **3** Rune tree data, purchase validation, spell-unlock gate
 - [x] **4** Minimal DOM UI
 - [x] **5** Sprites: hero state swaps, sword trail, enemy hit-flash/death CSS

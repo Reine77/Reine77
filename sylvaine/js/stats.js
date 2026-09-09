@@ -104,6 +104,13 @@
 
       // ---- power sources (filled in by later phases) ----
       equipped: { weapon: null, armor: null }, // Phase 2
+      // Real gear inventory (step 4) — items that don't auto-sell on
+      // drop wait here for a manual equipItem/sellItem call. Starts
+      // from CONFIG's default policy, then lives on the hero from
+      // here on so items.js's setAutoSell can flip it at runtime,
+      // same split as attackAttribute/spellAttribute above.
+      inventory: [],
+      autoSellRarities: Object.assign({}, CONFIG.items.autoSellDefault),
       runes: {},                               // rune id -> rank owned (1..maxRank)
       spellUnlocked: false,                    // flipped by the first magic rune
       healUnlocked: false,                     // flipped by the first heal rune
