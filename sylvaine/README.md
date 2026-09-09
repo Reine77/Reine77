@@ -430,6 +430,43 @@ drive build and hunting-ground decisions.
 `canWin` folds the matchup in per damage source, so the retreat gate can't
 march her into a fight the numbers say she loses.
 
+## Normal-stage walls (build/gear can unblock them, not just bosses)
+
+The pre-fight winnability check (`canWin`) used to run only before bosses —
+normal stages just resolved for real, on the reasoning that a ~10-15s normal
+fight is cheap enough to let her try and possibly die. That stopped being the
+right call once normal-stage enemies could carry real elemental resistances:
+a build that's simply wrong for the current stage should be caught and
+explained the same way an underleveled boss attempt already was, not
+discovered by repeatedly dying.
+
+**Every enemy now gets the same pre-fight check**, elemental matchup
+included. So a normal-stage wall works exactly like a boss wall always did:
+she retreats to farm the last stage she can actually beat, and after every
+farm kill the game re-asks "could I win now?" with current gear/runes/level
+folded in — the moment a purchase or drop tips the answer, she goes right
+back and clears it. Verified directly: force an artificially unbeatable
+normal-stage enemy, confirm she retreats and farms; boost her stats, confirm
+she immediately breaks back through.
+
+**A mistake caught by measuring, not reasoning about it:** `canWin` compares
+time-to-kill against time-to-die, and time-to-die used her hp. Whether that
+should be her *current* hp or her *max* hp turned out to matter a lot once
+this check ran before every stage instead of just rare bosses. Current hp
+seemed to cause "thrashing" — bouncing between two adjacent stages every few
+minutes — so the first attempt switched it to max hp on the theory that the
+check should mean "is this content within my build," not "how bruised am I
+right now." That was wrong, and measuring proved it backwards: max hp made
+the check *optimistic* (it passes assuming full health, then the real fight
+runs at whatever attrition-reduced hp she actually has), and real deaths in a
+60-minute run went from **0 to 70**. Current hp is what makes the check an
+honest "would I survive this specific fight," and the "thrashing" was never
+a bug — it's the same attrition mechanic (`combat.healOnKill` is a partial
+top-up, not a full heal) that already existed via real deaths before this
+change, just now caught proactively instead of paid for in HP. Reverted to
+current hp; verified 0 real deaths across 4 seeds over 3 hours each,
+progression unaffected (stage 55+ reached in all of them).
+
 ## Boss tokens and epic availability
 
 **The problem:** a whole playthrough contains only ~5 boss encounters (bosses

@@ -711,6 +711,63 @@ console.log('\nPhase 1 checks\n');
     Game.heroDps(state) === Game.heroDps(state, neutral));
 }
 
+/* --- 36b. normal stages get the SAME pre-fight check as bosses */
+{
+  // This used to be boss-only (`enemy.isBoss && !canWin(...)`).
+  // Force an artificially unbeatable NORMAL enemy and confirm she
+  // retreats to farm rather than fighting and dying.
+  const state = Game.createState({ seed: 60, echo: false });
+  for (let i = 0; i < 60 * 60 * 3; i++) Game.step(state, 1 / 60);
+  state.stage = 8; state.highestNormalCleared = 7;
+  state.enemy = null; state.phase = 'spawning'; state.phaseTimer = 0;
+  Game.step(state, 0.001); // spawns the stage-8 enemy
+  state.enemy.damage *= 50; // impossible to survive even one exchange
+  state.enemy.isBoss = false; // this must trip on a NORMAL enemy
+
+  const deathsBefore = state.totals.retreats;
+  for (let i = 0; i < 60 * 5; i++) Game.step(state, 1 / 60);
+  check('an unwinnable NORMAL stage triggers a proactive retreat',
+    state.farming === true && state.blockedStage === 8,
+    'farming=' + state.farming + ' blockedStage=' + state.blockedStage);
+  check('she is caught before the fight, not killed by it',
+    state.hero.hp > 0 && state.totals.retreats > deathsBefore);
+
+  // Now give her a build strong enough to win it, and confirm she
+  // breaks straight back through — same mechanism bosses always had.
+  state.hero.base.damage *= 100;
+  Stats.markDirty(state.hero);
+  for (let i = 0; i < 60 * 10 && state.farming; i++) Game.step(state, 1 / 60);
+  check('a strong enough build breaks through the same normal-stage wall',
+    state.farming === false && state.stage === 8,
+    'farming=' + state.farming + ' stage=' + state.stage);
+}
+
+/* --- 36c. canWin uses CURRENT hp, not max hp -----------------
+     Regression guard for a real mistake made while building this:
+     max hp made the pre-fight check optimistic (it passes assuming
+     full health, then the real fight runs at whatever attrition-
+     reduced hp she actually has), and measured 0 -> 70 real deaths
+     in a 60-minute run. Current hp is what makes "would I survive
+     this fight" honest instead of optimistic.                    */
+{
+  const state = Game.createState({ seed: 61, echo: false });
+  // Sized so the time-to-kill/time-to-die RACE genuinely flips
+  // between full hp and near-zero hp — a trivially weak enemy
+  // passes at any hp (she kills it before its first hit lands
+  // regardless), which would make this test pass for the wrong
+  // reason. This one only wins at close to full hp.
+  const enemy = { hp: 100, damage: 5, attackSpeed: 1, weakTo: [], resists: [] };
+
+  const s = Stats.computeStats(state.hero);
+  state.hero.hp = s.maxHp; // full health -> should pass
+  check('canWin passes at full HP for a fight sized to actually need it',
+    Game.canWin(state, enemy) === true);
+
+  state.hero.hp = 1; // one hit from death -> must refuse regardless of maxHp
+  check('canWin refuses at near-zero CURRENT hp, even though maxHp is unchanged',
+    Game.canWin(state, enemy) === false);
+}
+
 /* --- 37. boss tokens drop and accumulate -------------------- */
 {
   const state = Game.createState({ seed: 50, echo: false });

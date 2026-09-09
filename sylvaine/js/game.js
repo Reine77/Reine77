@@ -214,12 +214,18 @@
       enemy.damage + ' dmg @ ' + enemy.attackSpeed.toFixed(2) + '/s)', state.time);
     emit(state, 'spawn', enemy);
 
-    // Bosses get a winnability check BEFORE the fight. Why not
-    // just let her fight and die? Because an unwinnable boss
-    // wastes 30 real seconds every attempt, and the retreat is a
-    // designed difficulty gate, not a punishment. Normal stages
-    // are cheap enough that we let them resolve for real.
-    if (enemy.isBoss && !canWin(state, enemy)) {
+    // EVERY enemy gets a winnability check before the fight, not
+    // just bosses. This used to be boss-only, on the reasoning that
+    // a normal fight is cheap (~10-15s) so it's fine to just let her
+    // try and die. That stopped being true once normal-stage enemies
+    // could carry real elemental resistances (a tagged pack, say) —
+    // a build that's wrong for the stage she's on should be caught
+    // and explained the same way an underleveled boss attempt is,
+    // not discovered by repeatedly dying. canWin() already folds the
+    // elemental matchup in per damage source (see its own comment),
+    // so this check is build- and gear-aware for normal stages too,
+    // not just HP/damage-aware.
+    if (!canWin(state, enemy)) {
       state.log.push('warn', 'She sizes up ' + enemy.name +
         ' and knows the maths. Not yet.', state.time);
       retreat(state, 'outmatched');
@@ -262,6 +268,18 @@
 
     var ttk = enemy.hp / dps;
     var enemyDps = enemy.damage * enemy.attackSpeed;
+
+    // Deliberately CURRENT hp, not max hp — tried max hp here first
+    // and it was wrong. The real fight that follows this check runs
+    // at whatever HP she actually has (heal-on-kill is only a
+    // partial top-up, so attrition across several fights is real —
+    // see combat.healOnKill's own comment). A check that assumes
+    // full HP passes fights she then loses for real, which is worse
+    // than the thing this check exists to prevent: measured it
+    // directly, and swapping to maxHp roughly DOUBLED real deaths
+    // ("overwhelmed by...") in a 60-minute run instead of reducing
+    // them. Current hp is what makes this an honest "would I survive
+    // THIS fight, right now" answer instead of an optimistic one.
     var ttd = enemyDps > 0 ? state.hero.hp / enemyDps : Infinity;
 
     return ttk <= ttd * CONFIG.combat.bossMargin;
