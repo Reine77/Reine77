@@ -43,7 +43,8 @@ node tools/simulate.mjs --minutes 60          # play an hour in ~a second
 node tools/simulate.mjs --minutes 5 --verbose # every swing
 node tools/simulate.mjs --seed 7 --spell      # different run, spell forced on
 node tools/simulate.mjs --minutes 60 --hz 144 # framerate comparison
-node tools/checks.mjs                         # 55 rule assertions
+node tools/checks.mjs                         # 97 rule assertions
+node tools/balance.mjs                        # economy calibration (spends gold)
 ```
 
 ## Files
@@ -67,6 +68,7 @@ js/render.js        reads state, writes DOM — never the reverse. Also
 js/main.js          browser entry point and the S.* debug API
 tools/simulate.mjs  headless runner
 tools/checks.mjs    sanity assertions
+tools/balance.mjs   economy calibration (plays WITH a gold-spending policy)
 assets/sprites/     (Phase 5) enemy + hero PNGs
 assets/intro/       (Phase 10) the five intro stills
 ```
@@ -321,6 +323,65 @@ Kill counts are now tracked per creature type (`totals.killsByType`), keyed
 on the base type rather than the display name — so "Bloodfang Goblin",
 "Elite Goblin" and "Goblin" all count toward the same bucket, which is what
 a future "kill 100 of these" requirement needs.
+
+## The economy (rune ranks + calibration)
+
+Every rune node can be bought **5 times**. Each rank adds the node's mods
+again (power is *linear* in rank) while the price multiplies by
+`config.runes.rankCostMult` = 3.1 (cost is *exponential*). So `blade_1` runs
+150g → 465g → 1,442g → 4,469g → 13,855g, and the fifth rank of anything is a
+real commitment rather than an afterthought. That's what turns gold from a
+finite 9,900g shopping list into a sink that never runs dry.
+
+**Calibration target: reaching the level cap (100) should afford ONE branch
+maxed, with a little left over — not the whole tree.** Measured across 7
+seeds with `tools/balance.mjs`: **1.13–1.16×** the cost of one branch, and
+**0.31×** the cost of the whole tree. Blade and arcane are deliberately
+priced identically (353,219g each) so choosing between them is about
+playstyle, not price. The hybrid branch is costlier on purpose — it's the
+capstone, and it requires both other branches anyway.
+
+### Two measurement traps worth knowing about
+
+**Measure at the milestone, not at a wall-clock time.** The first attempt
+measured lifetime gold after a fixed 3 days and reported a *73× spread*
+across seeds — which looked like the economy was pure luck and untunable.
+It was a measurement error: seeds that hit level 100 early kept earning for
+hours afterwards at exponentially deeper stages. Measured at the moment the
+cap is reached — the thing the target is actually about — the same seeds
+land within ±0.02 of each other. `balance.mjs` now reports the at-cap number
+and labels the post-cap surplus separately.
+
+**The simulator has to spend gold.** `simulate.mjs` never buys anything, so
+every economy number it produced was for a hero with an empty rune tree.
+`tools/balance.mjs` exists because of that: it runs the same game with a
+stand-in player that buys the cheapest available rank in a chosen branch.
+
+### The arc-length tension (unresolved on purpose)
+
+Slowing the XP curve to stretch the arc does **not** work as a simple knob,
+and it's worth knowing why before touching it:
+
+| `xp.growth` | time to level 100 | reliability | gold ÷ branch |
+| --- | --- | --- | --- |
+| 1.07 | 1–5h | 7/7 seeds cap | 1.14x ✅ |
+| 1.08 | 3.6h–never | 2/3 seeds cap | 5.2x |
+| 1.09 | 15.8h–never | 1/3 seeds cap | 11.6x |
+| 1.10 | 40.7h–never | 1/3 seeds cap | 25.9x |
+
+Slower levelling means she spends far longer at deep stages, where gold is
+exponential — so the ratio explodes — *and* levels are a load-bearing power
+source, so slowing them makes some runs stall permanently below the cap.
+
+So the arc is currently **~1–5 hours of continuous game time** to level 100.
+The "day or two" wall-clock experience depends on Phase 8's offline progress
+(at a fraction of the online rate) plus the fact that nobody watches an idle
+game continuously. Genuinely stretching the *active* arc would need rune
+costs that scale with progress rather than fixed prices — a structural
+change, deliberately not done yet.
+
+`node tools/balance.mjs --branch arcane --days 5` re-runs the whole
+measurement.
 
 ## Phase plan
 

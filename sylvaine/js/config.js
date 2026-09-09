@@ -19,6 +19,13 @@
        These are BASE stats. Nothing in the game ever writes to
        them at runtime. Levels, gear and runes are all layered
        on top as separate modifiers (see stats.js).            */
+    /* Level 100 is the end of the intended arc — the point the
+       economy is balanced around (reaching it should afford one
+       maxed rune branch, not the whole tree). XP stops accruing
+       here; stages continue forever, so the endless tail is still
+       there for anyone who wants it. */
+    levelCap: 100,
+
     heroBase: {
       hp:            100,
       damage:        10,
@@ -54,7 +61,7 @@
        hero's level growth slows down as enemies speed up.     */
     xp: {
       base:   50,
-      growth: 1.20,
+      growth: 1.07,
 
       // How far BELOW your frontier (highest normal stage cleared)
       // an enemy still gives XP worth having. At the frontier it's
@@ -111,6 +118,27 @@
       damageMult:   1.35,
       xpMult:       5.0,
       goldMult:     5.0
+    },
+
+    /* ---- Runes ----------------------------------------------
+       Every node can be bought `maxRank` times. Each rank adds the
+       node's mods again (linear power) while costing rankCostMult
+       times the last one (exponential price) — the classic
+       diminishing-returns shape, and the thing that turns gold
+       from a finite shopping list into a sink that never runs dry.
+
+       A node's `cost` in runes.js is its RANK 1 price; rank R
+       costs cost * rankCostMult^(R-1). So one node fully maxed
+       costs cost * (rankCostMult^maxRank - 1) / (rankCostMult - 1).
+
+       rankCostMult is the single lever that decides how much of
+       the tree a full playthrough can afford — see the calibration
+       note in README (the economy is tuned so reaching the level
+       cap buys ONE branch maxed, with a little left over, not the
+       whole tree). Change it and the whole economy moves.        */
+    runes: {
+      maxRank:      5,
+      rankCostMult: 3.1
     },
 
     /* ---- Items ----------------------------------------------

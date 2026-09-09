@@ -35,6 +35,7 @@
   'use strict';
 
   var Sylvaine = (root.Sylvaine = root.Sylvaine || {});
+  var CONFIG = Sylvaine.CONFIG;
 
   /* ---- The tree ---------------------------------------------
      Costs are hand-authored, not curve-generated like enemies/
@@ -66,7 +67,7 @@
     // ---- arcane branch: spellPower, spellCooldown reduction -
     {
       id: 'arcane_1', branch: 'arcane', name: "Aldreth's First Lesson",
-      cost: 200, requires: [],
+      cost: 175, requires: [],
       mods: { spellPower: 6 },
       // This is the ONE line that turns the spell on. See the
       // file header — before this is owned, she has no spell,
@@ -75,7 +76,7 @@
     },
     {
       id: 'arcane_2', branch: 'arcane', name: 'Steady Hand',
-      cost: 450, requires: ['arcane_1'],
+      cost: 375, requires: ['arcane_1'],
       // Stored as a NEGATIVE mod on spellCooldown — the affix
       // fluff is "0.6s off your cooldown", the mod is -0.6.
       // Same convention items.js uses for the same stat.
@@ -83,12 +84,12 @@
     },
     {
       id: 'arcane_3', branch: 'arcane', name: 'Deep Well',
-      cost: 850, requires: ['arcane_2'],
+      cost: 700, requires: ['arcane_2'],
       mods: { spellPower: 10 }
     },
     {
       id: 'arcane_4', branch: 'arcane', name: 'Rune-Scarred',
-      cost: 1600, requires: ['arcane_3'],
+      cost: 1350, requires: ['arcane_3'],
       mods: { spellCooldown: -0.8, spellPower: 6 }
     },
 
@@ -110,24 +111,81 @@
 
   function getNode(id) { return byId[id]; }
 
-  function isOwned(hero, id) { return hero.runes.indexOf(id) !== -1; }
+  var MAX_RANK = CONFIG.runes.maxRank;
 
+  /* ---- Ranks -------------------------------------------------
+     hero.runes is a map of id -> rank owned (1..maxRank). A node
+     the hero has never bought is simply absent, so `rankOf` is the
+     single place that turns "absent" into 0 and everything else
+     can treat rank as a plain number.
+
+     It is a MAP rather than the array of ids it used to be
+     because rank is now a per-node quantity, and an array of ids
+     can only express "owned / not owned". Phase 8's save format
+     gets the same upgrade for free — it's still one plain JSON
+     object.                                                     */
+  function rankOf(hero, id) {
+    return hero.runes[id] || 0;
+  }
+
+  function isOwned(hero, id) { return rankOf(hero, id) > 0; }
+
+  function isMaxed(hero, id) { return rankOf(hero, id) >= MAX_RANK; }
+
+  // Price of the NEXT rank of a node: rank 1 costs the node's base
+  // `cost`, and every rank after multiplies by rankCostMult. Power
+  // per rank stays flat (see modsFor) while price compounds, which
+  // is what makes the fifth rank a real decision instead of an
+  // automatic one.
+  function nextRankCost(hero, id) {
+    var node = byId[id];
+    if (!node) return Infinity;
+    var rank = rankOf(hero, id);
+    if (rank >= MAX_RANK) return Infinity;
+    return Math.round(node.cost * Math.pow(CONFIG.runes.rankCostMult, rank));
+  }
+
+  // Total cost of taking one node from nothing to max rank.
+  function fullCostOf(id) {
+    var node = byId[id];
+    if (!node) return 0;
+    var total = 0;
+    for (var r = 0; r < MAX_RANK; r++) {
+      total += Math.round(node.cost * Math.pow(CONFIG.runes.rankCostMult, r));
+    }
+    return total;
+  }
+
+  // Total cost of maxing every node in one branch — the number the
+  // economy is calibrated against (see README).
+  function branchCost(branch) {
+    return NODES.reduce(function (sum, n) {
+      return n.branch === branch ? sum + fullCostOf(n.id) : sum;
+    }, 0);
+  }
+
+  // Prerequisites only need to be UNLOCKED (rank >= 1), not maxed.
+  // Requiring maxed prereqs would force a single rigid buy order
+  // and remove the choice this tree exists to offer.
   function prereqsMet(hero, node) {
     return node.requires.every(function (reqId) { return isOwned(hero, reqId); });
   }
 
-  /* ---- The three purchase rules from the spec, checked in an
-     order that gives the most useful failure message first ---- */
+  /* ---- The purchase rules, checked in an order that gives the
+     most useful failure message first ------------------------- */
   function canPurchase(hero, id) {
     var node = byId[id];
     if (!node) return { ok: false, reason: 'no such rune: "' + id + '"' };
-    if (isOwned(hero, id)) return { ok: false, reason: 'already owned' };
+    if (isMaxed(hero, id)) {
+      return { ok: false, reason: 'already at max rank (' + MAX_RANK + ')' };
+    }
     if (!prereqsMet(hero, node)) {
       var missing = node.requires.filter(function (r) { return !isOwned(hero, r); });
       return { ok: false, reason: 'missing prerequisite(s): ' + missing.join(', ') };
     }
-    if (hero.gold < node.cost) {
-      return { ok: false, reason: 'not enough gold (need ' + node.cost + ', have ' + Math.floor(hero.gold) + ')' };
+    var cost = nextRankCost(hero, id);
+    if (hero.gold < cost) {
+      return { ok: false, reason: 'not enough gold (need ' + cost + ', have ' + Math.floor(hero.gold) + ')' };
     }
     return { ok: true, reason: null };
   }
@@ -141,8 +199,9 @@
     }
 
     var node = byId[id];
-    hero.gold -= node.cost;
-    hero.runes.push(id);
+    var cost = nextRankCost(hero, id);
+    hero.gold -= cost;
+    hero.runes[id] = rankOf(hero, id) + 1;
 
     // Runes changed a stat input — throw the cache away. This is
     // the exact same line items.js's onKill needs after equipping,
@@ -161,38 +220,58 @@
       justUnlockedSpell = true;
     }
 
-    state.log.push('rune', 'Purchased "' + node.name + '" [' + node.branch + '] for ' +
-      node.cost + ' gold.' + (justUnlockedSpell ? ' The spell is unlocked.' : ''), state.time);
+    state.log.push('rune', 'Purchased "' + node.name + '" rank ' + hero.runes[id] +
+      '/' + MAX_RANK + ' [' + node.branch + '] for ' + cost + ' gold.' +
+      (justUnlockedSpell ? ' The spell is unlocked.' : ''), state.time);
     return true;
   }
 
-  // Nodes she could buy right now if she had the gold — prereqs
-  // met, not already owned. Doesn't check cost, so a UI (Phase 6)
-  // can show "locked" vs "visible but can't afford yet" separately.
+  // Nodes she could rank up right now if she had the gold — prereqs
+  // met, not yet maxed. Doesn't check cost, so a UI can show
+  // "locked" vs "visible but can't afford yet" separately.
   function availableNodes(hero) {
-    return NODES.filter(function (n) { return !isOwned(hero, n.id) && prereqsMet(hero, n); });
+    return NODES.filter(function (n) { return !isMaxed(hero, n.id) && prereqsMet(hero, n); });
   }
 
   // Called by stats.js's computeStats — see the comment there.
-  // Sums every owned node's mods into one accumulator, the same
-  // shape stats.js already knows how to merge (applyMods).
-  function modsFor(ownedIds) {
+  // A node at rank R contributes its mods R times: power is LINEAR
+  // in rank while cost is exponential, so each rank is worth the
+  // same amount of stat for progressively more gold.
+  function modsFor(owned) {
     var total = {};
-    for (var i = 0; i < ownedIds.length; i++) {
-      var node = byId[ownedIds[i]];
+    for (var id in owned) {
+      if (!Object.prototype.hasOwnProperty.call(owned, id)) continue;
+      var node = byId[id];
       if (!node) continue;
+      var rank = owned[id];
       for (var stat in node.mods) {
         if (!Object.prototype.hasOwnProperty.call(node.mods, stat)) continue;
-        total[stat] = (total[stat] || 0) + node.mods[stat];
+        total[stat] = (total[stat] || 0) + node.mods[stat] * rank;
       }
     }
     return total;
   }
 
+  // Total ranks bought across the whole tree, for progress display.
+  function totalRanks(hero) {
+    var n = 0;
+    for (var id in hero.runes) {
+      if (Object.prototype.hasOwnProperty.call(hero.runes, id)) n += hero.runes[id];
+    }
+    return n;
+  }
+
   Sylvaine.Runes = {
     NODES: NODES,
+    MAX_RANK: MAX_RANK,
     getNode: getNode,
+    rankOf: rankOf,
     isOwned: isOwned,
+    isMaxed: isMaxed,
+    nextRankCost: nextRankCost,
+    fullCostOf: fullCostOf,
+    branchCost: branchCost,
+    totalRanks: totalRanks,
     prereqsMet: prereqsMet,
     canPurchase: canPurchase,
     purchase: purchase,

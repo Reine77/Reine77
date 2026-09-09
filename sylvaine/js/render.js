@@ -294,9 +294,13 @@
         name.textContent = node.name +
           (node.requires.length ? ' (needs ' + node.requires.join(', ') + ')' : '');
 
+        var rank = document.createElement('span');
+        rank.className = 'rune-rank';
+
+        // Cost is filled in by updateRuneList, not here: it changes
+        // every time a rank is bought, so it can't be baked in once.
         var cost = document.createElement('span');
         cost.className = 'rune-cost';
-        cost.textContent = node.cost + 'g';
 
         var status = document.createElement('span');
         status.className = 'rune-status';
@@ -317,12 +321,15 @@
 
         row.appendChild(branch);
         row.appendChild(name);
+        row.appendChild(rank);
         row.appendChild(cost);
         row.appendChild(status);
         row.appendChild(button);
         el.runeList.appendChild(row);
 
-        runeRows[node.id] = { row: row, button: button, status: status };
+        runeRows[node.id] = {
+          row: row, button: button, status: status, cost: cost, rank: rank
+        };
       });
     }
 
@@ -413,20 +420,27 @@
     function updateRuneList(hero) {
       Runes.NODES.forEach(function (node) {
         var refs = runeRows[node.id];
-        var owned = Runes.isOwned(hero, node.id);
+        var rank = Runes.rankOf(hero, node.id);
+        var maxed = Runes.isMaxed(hero, node.id);
 
-        refs.row.classList.toggle('owned', owned);
+        refs.row.classList.toggle('owned', maxed);
+        refs.rank.textContent = rank + '/' + Runes.MAX_RANK;
 
-        if (owned) {
-          refs.status.textContent = 'owned';
+        if (maxed) {
+          refs.cost.textContent = '—';
+          refs.status.textContent = 'maxed';
           refs.button.disabled = true;
-          refs.button.textContent = 'Owned';
-        } else {
-          var check = Runes.canPurchase(hero, node.id);
-          refs.status.textContent = check.ok ? 'ready' : check.reason;
-          refs.button.disabled = !check.ok;
-          refs.button.textContent = 'Buy';
+          refs.button.textContent = 'Maxed';
+          return;
         }
+
+        // Cost shown is always the price of the NEXT rank, so the
+        // number on screen is the number that will be charged.
+        refs.cost.textContent = Runes.nextRankCost(hero, node.id) + 'g';
+        var check = Runes.canPurchase(hero, node.id);
+        refs.status.textContent = check.ok ? 'ready' : check.reason;
+        refs.button.disabled = !check.ok;
+        refs.button.textContent = rank === 0 ? 'Learn' : 'Rank up';
       });
     }
 

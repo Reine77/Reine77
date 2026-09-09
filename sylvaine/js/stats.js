@@ -55,7 +55,7 @@
 
       // ---- power sources (filled in by later phases) ----
       equipped: { weapon: null, armor: null }, // Phase 2
-      runes: [],                               // Phase 3 (array of rune ids)
+      runes: {},                               // rune id -> rank owned (1..maxRank)
       spellUnlocked: false,                    // flipped by the first arcane rune
 
       // ---- stat cache ----

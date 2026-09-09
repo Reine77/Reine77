@@ -143,7 +143,8 @@
         items:    state.totals.itemDrops + ' found / ' + state.totals.itemsEquipped +
                   ' equipped / ' + state.totals.epicsFound + ' epic',
         retreats: state.totals.retreats,
-        runes:    state.hero.runes.length + '/' + Runes.NODES.length +
+        runes:    Runes.totalRanks(state.hero) + '/' +
+                  (Runes.NODES.length * Runes.MAX_RANK) + ' ranks' +
                   (state.hero.spellUnlocked ? ' (spell unlocked)' : ' (no spell yet)')
       });
       return state.totals;
@@ -220,9 +221,10 @@
       var hero = state.hero;
       var rows = {};
       Runes.NODES.forEach(function (node) {
+        var maxed = Runes.isMaxed(hero, node.id);
         var status;
-        if (Runes.isOwned(hero, node.id)) {
-          status = 'OWNED';
+        if (maxed) {
+          status = 'MAXED';
         } else {
           var check = Runes.canPurchase(hero, node.id);
           status = check.ok ? 'affordable now' : 'locked: ' + check.reason;
@@ -230,12 +232,17 @@
         rows[node.id] = {
           branch: node.branch,
           name: node.name,
-          cost: node.cost,
+          rank: Runes.rankOf(hero, node.id) + '/' + Runes.MAX_RANK,
+          nextCost: maxed ? '—' : Runes.nextRankCost(hero, node.id),
+          allRanks: Runes.fullCostOf(node.id),
           requires: node.requires.join(', ') || '(none)',
           status: status
         };
       });
       console.table(rows);
+      console.log('Maxing one branch costs: blade ' + Runes.branchCost('blade') +
+        'g, arcane ' + Runes.branchCost('arcane') + 'g, hybrid ' +
+        Runes.branchCost('hybrid') + 'g');
     },
 
     buyRune: function (id) {

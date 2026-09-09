@@ -349,10 +349,16 @@ console.log('\nPhase 1 checks\n');
   state.hero.gold = 100000;
   check('can buy once gold and prereqs are both satisfied',
     Runes.purchase(state, 'blade_1') === true);
+  // Buying the same node again is now a RANK UP, not a duplicate —
+  // it must succeed, charge the (higher) next-rank price, and leave
+  // the node one rank stronger.
   const goldAfterFirst = state.hero.gold;
-  check('cannot buy the same rune twice', Runes.purchase(state, 'blade_1') === false);
-  check('gold not spent a second time on a duplicate purchase',
-    state.hero.gold === goldAfterFirst);
+  const secondCost = Runes.nextRankCost(state.hero, 'blade_1');
+  check('buying the same node again ranks it up', Runes.purchase(state, 'blade_1') === true);
+  check('the second rank is at rank 2', Runes.rankOf(state.hero, 'blade_1') === 2);
+  check('ranking up charges the higher next-rank price',
+    state.hero.gold === goldAfterFirst - secondCost,
+    'spent ' + (goldAfterFirst - state.hero.gold) + ', expected ' + secondCost);
 
   check('the prereq that was blocked before now succeeds',
     Runes.purchase(state, 'blade_2') === true);
@@ -401,8 +407,48 @@ console.log('\nPhase 1 checks\n');
   check('buying every rune in the tree never touches hero.base',
     JSON.stringify(state.hero.base) === before);
   check('all ' + Runes.NODES.length + ' nodes were actually purchasable in prereq order',
-    state.hero.runes.length === Runes.NODES.length,
-    state.hero.runes.length + '/' + Runes.NODES.length);
+    Object.keys(state.hero.runes).length === Runes.NODES.length,
+    Object.keys(state.hero.runes).length + '/' + Runes.NODES.length);
+}
+
+/* --- 24b. rune ranks ---------------------------------------- */
+{
+  const state = Game.createState({ seed: 23, echo: false });
+  state.hero.gold = 10000000;
+  const MAX = Runes.MAX_RANK;
+
+  check('a fresh hero owns no ranks', Runes.rankOf(state.hero, 'blade_1') === 0);
+
+  // Costs must strictly increase per rank.
+  const costs = [];
+  for (let r = 0; r < MAX; r++) {
+    costs.push(Runes.nextRankCost(state.hero, 'blade_1'));
+    Runes.purchase(state, 'blade_1');
+  }
+  check('rank 1 costs the node base price', costs[0] === Runes.getNode('blade_1').cost,
+    String(costs[0]));
+  check('every rank costs strictly more than the last',
+    costs.every((c, i) => i === 0 || c > costs[i - 1]), costs.join(' -> '));
+  check('a node stops at max rank', Runes.rankOf(state.hero, 'blade_1') === MAX);
+  check('buying past max rank is refused', Runes.purchase(state, 'blade_1') === false);
+  check('fullCostOf matches the sum actually charged',
+    Runes.fullCostOf('blade_1') === costs.reduce((a, b) => a + b, 0),
+    Runes.fullCostOf('blade_1') + ' vs ' + costs.reduce((a, b) => a + b, 0));
+
+  // Power must scale linearly with rank while cost scales exponentially.
+  const one = Runes.modsFor({ blade_1: 1 }).attackSpeed;
+  const five = Runes.modsFor({ blade_1: 5 }).attackSpeed;
+  check('rank 5 gives exactly 5x the stat of rank 1',
+    Math.abs(five - one * 5) < 1e-9, one + ' -> ' + five);
+  check('but rank 5 costs far more than 5x rank 1',
+    costs[4] > costs[0] * 5, costs[0] + ' -> ' + costs[4]);
+
+  // Prereqs unlock at rank 1 — they do not need to be maxed.
+  const s2 = Game.createState({ seed: 24, echo: false });
+  s2.hero.gold = 10000000;
+  Runes.purchase(s2, 'blade_1');
+  check('a rank-1 prereq is enough to unlock the next node',
+    Runes.canPurchase(s2.hero, 'blade_2').ok === true);
 }
 
 /* --- 25. hunting grounds: validation ---------------------- */
@@ -528,6 +574,44 @@ console.log('\nPhase 1 checks\n');
   check('one creature with several palette tiers still has ONE bucket',
     goblinish.length > 1 && !keys.some(k => k.includes('bloodfang')),
     goblinish.length + ' goblin variants tracked under: goblin');
+}
+
+/* --- 31. economy shape (the calibration guard rails) --------
+     The full economic simulation lives in tools/balance.mjs — it
+     takes minutes to run, so it stays a manual tool. These are the
+     cheap arithmetic invariants that would catch the economy
+     drifting without anyone noticing.                           */
+{
+  const blade = Runes.branchCost('blade');
+  const arcane = Runes.branchCost('arcane');
+  const whole = Runes.NODES.reduce((s, n) => s + Runes.fullCostOf(n.id), 0);
+
+  check('blade and arcane cost the same to max (the choice is playstyle, not price)',
+    Math.abs(blade - arcane) <= 2, blade + ' vs ' + arcane);
+
+  check('the whole tree costs far more than one branch — it must NOT all be affordable',
+    whole > blade * 3, whole + ' vs one branch ' + blade);
+
+  // The last rank has to be a real commitment, not a rounding error.
+  const n = Runes.getNode('blade_1');
+  const firstRank = n.cost;
+  const lastRank = Math.round(n.cost * Math.pow(CONFIG.runes.rankCostMult, Runes.MAX_RANK - 1));
+  check('the final rank of a node costs >10x the first',
+    lastRank > firstRank * 10, firstRank + ' -> ' + lastRank);
+
+  check('there is a level cap and it is the arc endpoint the economy targets',
+    CONFIG.levelCap === 100, String(CONFIG.levelCap));
+}
+
+/* --- 32. the level cap actually stops levelling -------------- */
+{
+  const state = Game.createState({ seed: 40, echo: false });
+  state.hero.level = CONFIG.levelCap;
+  state.hero.xp = 0;
+  Game.gainXp(state, 999999999);
+  check('XP past the level cap is ignored', state.hero.level === CONFIG.levelCap,
+    String(state.hero.level));
+  check('and no XP is banked at the cap either', state.hero.xp === 0, String(state.hero.xp));
 }
 
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');

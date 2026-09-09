@@ -419,7 +419,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
    status text is. */
 #runeList {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto;
+  /* branch | name | rank | cost | status | button */
+  grid-template-columns: auto 1fr auto auto auto auto;
   row-gap: .35rem;
 }
 .rune-row {
@@ -446,7 +447,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 .rune-row.branch-arcane .rune-branch { color: #7ab0d9; border-color: #2f4f66; }
 .rune-row.branch-hybrid .rune-branch { color: var(--gold); border-color: #6b5c2a; }
 
-.rune-row .rune-cost { color: var(--gold); min-width: 4.5em; text-align: left; }
+.rune-row .rune-rank { color: var(--text-dim); min-width: 2.6em; text-align: left; }
+.rune-row.owned .rune-rank { color: var(--hero); }
+.rune-row .rune-cost { color: var(--gold); min-width: 5.5em; text-align: left; }
 .rune-row .rune-status { color: var(--text-dim); font-size: .7rem; min-width: 9em; }
 .rune-row.owned { opacity: .55; }
 .rune-row button {

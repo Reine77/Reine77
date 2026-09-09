@@ -515,11 +515,12 @@
 
   function gainXp(state, amount) {
     var hero = state.hero;
-    if (amount <= 0) return; // outleveled content grants nothing
+    if (amount <= 0) return;                       // outleveled content grants nothing
+    if (hero.level >= CONFIG.levelCap) return;     // arc complete; stages go on forever
     hero.xp += amount;
 
     // `while`, not `if`: one big boss can grant several levels.
-    while (hero.xp >= hero.xpToNext) {
+    while (hero.xp >= hero.xpToNext && hero.level < CONFIG.levelCap) {
       hero.xp -= hero.xpToNext;
       hero.level += 1;
       hero.xpToNext = Stats.xpForLevel(hero.level);
