@@ -166,12 +166,19 @@
       <div id="inventoryList"></div>
     </div>
 
-    <!-- Basic rune-buy list — NOT the real tree UI (that's Phase
-         6, with visual prerequisite lines). This is one flat list
-         of buttons so runes don't require the console anymore. -->
+    <!-- Phase 6: the real clickable rune tree. Nodes are absolutely
+         positioned inside a fixed-size canvas (see render.js's
+         RUNE_LAYOUT) so the physical/magic/hybrid shape is actually
+         visible, not just implied by a "branch" label in a flat
+         list. An SVG line overlay draws every prerequisite edge,
+         colored by whether that path is available/taken. -->
     <div class="panel">
       <h2>Runes</h2>
-      <div id="runeList"></div>
+      <div id="runeTreeWrap">
+        <div id="runeTree">
+          <svg id="runeTreeLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
     </div>
 
     <div class="panel" id="logPanel">

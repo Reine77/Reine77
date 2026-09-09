@@ -491,73 +491,77 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 }
 #farmHint.warn { color: var(--enemy); }
 
-/* ---- rune buy list -------------------------------------------
-   Deliberately basic — the real clickable tree is Phase 6. This
-   is a flat list of buttons so runes don't require the console. */
-/* #runeList is the grid — NOT each row. This matters: a plain
-   `display:grid` on each `.rune-row` individually would only align
-   columns WITHIN that one row, because each row would compute its
-   own column widths from only its own content (branch/cost/status/
-   button natural sizes for THAT row alone). Since `.rune-status`'s
-   text length varies hugely row to row ("not enough gold (need
-   150, have 17)" vs "missing prerequisite(s): phys_2, magic_2"),
-   each row would still size its own name/cost columns differently
-   — which is exactly what was happening with flexbox, and grid
-   alone doesn't fix it without one more step.
+/* ---- rune tree (Phase 6) ---------------------------------------
+   Real positions, not a list. Every node's (x,y) lives in
+   render.js's RUNE_LAYOUT as a 0-100 coordinate — the SAME 0-100
+   space the SVG overlay's viewBox uses, so a node's CSS
+   `left:X%;top:Y%` and its prerequisite lines' endpoints always
+   agree with each other with zero unit conversion in JS.
 
-   That step is `subgrid`: #runeList defines the ONE set of column
-   tracks, and each `.rune-row` — despite being a separate element —
-   inherits those exact tracks instead of computing its own. Now the
-   cost column's width is the max across ALL 10 rows' cost cells,
-   shared identically by every row, so gold amounts land at the same
-   X position everywhere regardless of how long any single row's
-   status text is. */
-#runeList {
-  display: grid;
-  /* branch | name | rank | cost | status | button */
-  grid-template-columns: auto 1fr auto auto auto auto;
-  row-gap: .35rem;
+   #runeTreeWrap scrolls horizontally rather than shrinking the
+   tree to fit — 14 positioned nodes get cramped and overlap if
+   squeezed into a narrow panel, and an overlapping tree is worse
+   than one that scrolls. */
+#runeTreeWrap { overflow-x: auto; }
+#runeTree {
+  position: relative;
+  min-width: 640px;
+  min-height: 440px;
 }
-.rune-row {
-  display: grid;
-  grid-template-columns: subgrid;
-  grid-column: 1 / -1;
+#runeTreeLines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible; /* preserveAspectRatio=none can otherwise clip thick strokes at the edges */
+}
+#runeTreeLines line {
+  stroke: var(--border);
+  stroke-width: .5;
+  vector-effect: non-scaling-stroke;
+}
+#runeTreeLines line.available { stroke: var(--hero-dim); }
+#runeTreeLines line.taken { stroke: var(--hero); }
+
+.rune-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 122px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: .6rem;
-  padding: .35rem .5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: .8rem;
-}
-.rune-row .rune-branch {
-  font-size: .65rem;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  padding: .1rem .4rem;
-  border-radius: 3px;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-}
-.rune-row.branch-physical .rune-branch { color: var(--enemy); border-color: var(--enemy-dim); }
-.rune-row.branch-magic .rune-branch { color: #7ab0d9; border-color: #2f4f66; }
-.rune-row.branch-hybrid .rune-branch { color: var(--gold); border-color: #6b5c2a; }
-
-.rune-row .rune-rank { color: var(--text-dim); min-width: 2.6em; text-align: left; }
-.rune-row.owned .rune-rank { color: var(--hero); }
-.rune-row .rune-cost { color: var(--gold); min-width: 5.5em; text-align: left; }
-.rune-row .rune-status { color: var(--text-dim); font-size: .7rem; min-width: 9em; }
-.rune-row.owned { opacity: .55; }
-.rune-row button {
+  gap: .15rem;
+  padding: .4rem .5rem;
   background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: .68rem;
+  text-align: center;
+}
+.rune-node.branch-physical { border-color: var(--enemy-dim); }
+.rune-node.branch-magic    { border-color: #2f4f66; }
+.rune-node.branch-hybrid   { border-color: #6b5c2a; }
+.rune-node .rune-name { font-size: .72rem; line-height: 1.2; }
+.rune-node.branch-physical .rune-name { color: var(--enemy); }
+.rune-node.branch-magic    .rune-name { color: #7ab0d9; }
+.rune-node.branch-hybrid   .rune-name { color: var(--gold); }
+.rune-node .rune-rank { color: var(--text-dim); }
+.rune-node .rune-rank.owned { color: var(--hero); }
+.rune-node .rune-cost { color: var(--gold); }
+.rune-node .rune-status { color: var(--text-dim); font-size: .6rem; min-height: 1.5em; }
+.rune-node.owned { opacity: .75; }
+.rune-node button {
+  background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: .25rem .6rem;
+  padding: .2rem .6rem;
   font: inherit;
   cursor: pointer;
+  width: 100%;
 }
-.rune-row button:disabled { opacity: .4; cursor: not-allowed; }
-.rune-row button:not(:disabled):hover { border-color: var(--gold); }
+.rune-node button:disabled { opacity: .4; cursor: not-allowed; }
+.rune-node button:not(:disabled):hover { border-color: var(--gold); }
 
 /* ---- combat log --------------------------------------------- */
 #logPanel { max-height: 260px; display: flex; flex-direction: column; }

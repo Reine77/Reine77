@@ -127,7 +127,8 @@
       bossGo:      document.getElementById('bossGo'),
       bossHint:    document.getElementById('bossHint'),
 
-      runeList:    document.getElementById('runeList'),
+      runeTree:      document.getElementById('runeTree'),
+      runeTreeLines: document.getElementById('runeTreeLines'),
       logList:     document.getElementById('logList'),
 
       equippedList:    document.getElementById('equippedList'),
@@ -140,9 +141,51 @@
 
     var lastPushCount = -1; // -1 forces an initial render even if the log is empty
     var runeRows = {};      // id -> { row, button, status } built once, updated in place
+    var runeLines = [];     // { fromId, toId, el } built once, colored in place
     var lastInventorySig = null; // forces an initial inventory render
 
-    buildRuneList();
+    /* ---- The tree's actual shape ------------------------------
+       (x, y) in a 0-100 coordinate space, matching the SVG overlay's
+       viewBox exactly — so a node's CSS `left/top` percentage and
+       its prerequisite lines' endpoints are always the same numbers,
+       no unit conversion needed anywhere.
+
+       Physical (left) and magic (right) are each drawn as a small
+       diamond: one trunk node forks into two, which reconverge at
+       an elemental capstone — literally the branch/reconverge shape
+       runes.js's own comment describes. Hybrid sits in the middle,
+       bridging the two branches at the tiers its `requires` actually
+       reference, so its position tells the truth about what it needs.
+       This is hand-authored, not computed from `requires` — a real
+       force-directed layout would be overkill for a fixed 14-node
+       tree that only changes when someone edits runes.js by hand.
+
+       Declared HERE (before buildRuneTree() is called below), not
+       next to the function that reads it — a `var` at that point in
+       the file would be hoisted-but-still-undefined at call time,
+       since assignment happens in source order regardless of hoisting.
+       Caught this exact bug once already: moving it up here is the
+       fix, not a stylistic preference. */
+    var RUNE_LAYOUT = {
+      phys_1: { x: 20, y: 8 },
+      phys_2: { x: 8,  y: 34 },
+      phys_3: { x: 32, y: 34 },
+      phys_4: { x: 8,  y: 60 },
+      phys_5: { x: 32, y: 60 },
+      phys_6: { x: 20, y: 86 },
+
+      magic_1: { x: 80, y: 8 },
+      magic_2: { x: 68, y: 34 },
+      magic_3: { x: 92, y: 34 },
+      magic_4: { x: 68, y: 60 },
+      magic_5: { x: 92, y: 60 },
+      magic_6: { x: 80, y: 86 },
+
+      hybrid_1: { x: 50, y: 34 },
+      hybrid_2: { x: 50, y: 68 }
+    };
+
+    buildRuneTree();
     wireFarmControls();
     wireBossControls();
     wireAutoSellControls();
@@ -294,35 +337,55 @@
       playEnemyDeath();
     });
 
-    function buildRuneList() {
+    function buildRuneTree() {
       // Guards against S.reset(): makeRenderer() runs again with a
-      // fresh state, and without this the old run's 10 rows would
-      // still be sitting in the DOM when the new 10 get appended.
-      el.runeList.innerHTML = '';
+      // fresh state, and without this the old run's nodes/lines
+      // would still be sitting in the DOM when the new ones get
+      // appended. The <svg> itself is a static child of #runeTree
+      // in the HTML, so clearing innerHTML would also wipe it —
+      // remove only what THIS function added instead.
+      el.runeTree.querySelectorAll('.rune-node').forEach(function (n) { n.remove(); });
+      el.runeTreeLines.innerHTML = '';
       runeRows = {};
+      runeLines = [];
+
+      var svgNS = 'http://www.w3.org/2000/svg';
+
+      // Lines first, so nodes render visually on top of them.
+      Runes.NODES.forEach(function (node) {
+        var to = RUNE_LAYOUT[node.id];
+        node.requires.forEach(function (reqId) {
+          var from = RUNE_LAYOUT[reqId];
+          var line = document.createElementNS(svgNS, 'line');
+          line.setAttribute('x1', from.x);
+          line.setAttribute('y1', from.y);
+          line.setAttribute('x2', to.x);
+          line.setAttribute('y2', to.y);
+          el.runeTreeLines.appendChild(line);
+          runeLines.push({ fromId: reqId, toId: node.id, el: line });
+        });
+      });
 
       Runes.NODES.forEach(function (node) {
-        var row = document.createElement('div');
-        row.className = 'rune-row branch-' + node.branch;
+        var pos = RUNE_LAYOUT[node.id];
+        var box = document.createElement('div');
+        box.className = 'rune-node branch-' + node.branch;
+        box.style.left = pos.x + '%';
+        box.style.top = pos.y + '%';
 
-        var branch = document.createElement('span');
-        branch.className = 'rune-branch';
-        branch.textContent = node.branch;
-
-        var name = document.createElement('span');
+        var name = document.createElement('div');
         name.className = 'rune-name';
-        name.textContent = node.name +
-          (node.requires.length ? ' (needs ' + node.requires.join(', ') + ')' : '');
+        name.textContent = node.name;
 
-        var rank = document.createElement('span');
+        var rank = document.createElement('div');
         rank.className = 'rune-rank';
 
-        // Cost is filled in by updateRuneList, not here: it changes
+        // Cost is filled in by updateRuneTree, not here: it changes
         // every time a rank is bought, so it can't be baked in once.
-        var cost = document.createElement('span');
+        var cost = document.createElement('div');
         cost.className = 'rune-cost';
 
-        var status = document.createElement('span');
+        var status = document.createElement('div');
         status.className = 'rune-status';
 
         var button = document.createElement('button');
@@ -339,16 +402,15 @@
           update();
         });
 
-        row.appendChild(branch);
-        row.appendChild(name);
-        row.appendChild(rank);
-        row.appendChild(cost);
-        row.appendChild(status);
-        row.appendChild(button);
-        el.runeList.appendChild(row);
+        box.appendChild(name);
+        box.appendChild(rank);
+        box.appendChild(cost);
+        box.appendChild(status);
+        box.appendChild(button);
+        el.runeTree.appendChild(box);
 
         runeRows[node.id] = {
-          row: row, button: button, status: status, cost: cost, rank: rank
+          row: box, button: button, status: status, cost: cost, rank: rank
         };
       });
     }
@@ -511,13 +573,19 @@
       }
     }
 
-    function updateRuneList(hero) {
+    function updateRuneTree(hero) {
       Runes.NODES.forEach(function (node) {
         var refs = runeRows[node.id];
         var rank = Runes.rankOf(hero, node.id);
         var maxed = Runes.isMaxed(hero, node.id);
 
+        // 'owned' only dims the box once it's MAXED (nothing left to
+        // do here) — a partially-ranked node still has an active
+        // "Rank up" button and shouldn't look faded while it does.
+        // Partial ownership is conveyed by rune-rank's own color
+        // instead (see the CSS: .rune-node.owned .rune-rank).
         refs.row.classList.toggle('owned', maxed);
+        refs.rank.classList.toggle('owned', rank > 0);
         refs.rank.textContent = rank + '/' + Runes.MAX_RANK;
 
         if (maxed) {
@@ -535,6 +603,18 @@
         refs.status.textContent = check.ok ? 'ready' : check.reason;
         refs.button.disabled = !check.ok;
         refs.button.textContent = rank === 0 ? 'Learn' : 'Rank up';
+      });
+
+      // Color each prerequisite edge by what's actually true of its
+      // two ends: 'taken' once the node it points TO is owned (she
+      // walked this exact path), 'available' once only the node it
+      // comes FROM is owned (the path exists but she hasn't taken
+      // it), otherwise left at the default dim border color.
+      runeLines.forEach(function (edge) {
+        var toOwned = Runes.isOwned(hero, edge.toId);
+        var fromOwned = Runes.isOwned(hero, edge.fromId);
+        edge.el.classList.toggle('taken', toOwned);
+        edge.el.classList.toggle('available', !toOwned && fromOwned);
       });
     }
 
@@ -811,7 +891,7 @@
 
       updateFarmPanel();
       updateBossPanel();
-      updateRuneList(hero);
+      updateRuneTree(hero);
       updateGearPanel();
       updateLog();
     }

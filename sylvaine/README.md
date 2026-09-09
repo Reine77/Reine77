@@ -281,6 +281,45 @@ other two channels; the numbers here are a baseline, not a final balance.
   alignment from Phase 4 to confirm the larger portraits didn't reopen that
   bug (still ~2px, unchanged).
 
+## What Phase 6 added
+
+- **The rune tree is now actually drawn as a tree**, not a flat list of
+  buttons with a "branch" label. `render.js`'s `RUNE_LAYOUT` hand-authors an
+  (x, y) position for each of the 14 nodes in a shared 0-100 coordinate
+  space — physical and magic each drawn as a small diamond (one trunk forks
+  into two, which reconverge at the elemental capstone, mirroring the
+  branch/reconverge shape `runes.js`'s own file-header comment describes),
+  with the two hybrid nodes bridging the middle at the tiers their
+  `requires` actually reference. Not computed from `requires` via a real
+  graph-layout algorithm — that would be overkill for a fixed 14-node tree
+  that only changes when someone hand-edits `runes.js`.
+- **An SVG line overlay** draws one line per prerequisite edge, using the
+  exact same 0-100 numbers as the nodes' CSS `left`/`top` percentages (the
+  SVG's `viewBox="0 0 100 100"` matches that space on purpose), so a node's
+  position and its lines' endpoints can never drift out of sync from a unit
+  mismatch. Each line is colored by what's actually true of its two ends —
+  dim by default, `available` once its source node is owned but the target
+  isn't yet, `taken` once the target itself is owned — so the tree reads at
+  a glance as "here's what you've built" rather than just a static diagram.
+- **A real hoisting bug, caught by the same headless-Chromium verification
+  habit this project always uses.** `RUNE_LAYOUT` was originally declared
+  right next to the function that reads it (`buildRuneTree`), further down
+  the file than the line that first *calls* `buildRuneTree()`. `var`
+  declarations hoist, but assignment doesn't — so at call time the variable
+  existed but was still `undefined`, throwing `Cannot read properties of
+  undefined (reading 'phys_1')` the moment the tree tried to render. Node
+  tests never would have caught this (`tools/checks.mjs` never loads
+  `render.js` — it's pure DOM code with nothing to unit test at that layer),
+  which is exactly why this project always closes out a UI-facing change
+  with a real headless Chromium load, not just "the diff looks right."
+  Fixed by moving the layout data above the call site.
+- Verified end-to-end in headless Chromium: 14 nodes and 17 lines render
+  (6 intra-branch edges each for physical/magic, 2 for `hybrid_1`, 3 for
+  `hybrid_2` — matches `runes.js`'s `requires` arrays exactly); a real
+  purchase through `Runes.purchase` updates the clicked node's rank, next-
+  rank cost, status text and button label in place, and correctly flips its
+  two outgoing edges to `available`.
+
 ## Hunting grounds (player-chosen farming)
 
 Added after the Phase 5 review, ahead of the companion/pet phases that need
@@ -875,7 +914,8 @@ assumed).
 - [x] **5** Sprites: hero state swaps, sword trail, enemy hit-flash/death CSS
       (system is fully wired and tested; visual result depends on real PNGs
       landing in `assets/sprites/` — see that folder's README)
-- [ ] **6** Rune tree UI (the real clickable tree; Phase 4's list is a stand-in)
+- [x] **6** Rune tree UI (real positioned nodes + an SVG prerequisite-line
+      overlay; Phase 4's flat list was the stand-in)
 - [ ] **7** Juice: floating numbers, HP bar lerp, crit flash, drop toasts
 - [ ] **8** Save/load + offline progress from a stored timestamp
 - [ ] **9** Whispers log (boss-defeat story fragments)
