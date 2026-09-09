@@ -189,6 +189,7 @@
     wireFarmControls();
     wireBossControls();
     wireAutoSellControls();
+    wireWindows();
     setupImageFallback(el.heroSprite, el.heroPortrait);
     setupImageFallback(el.enemySprite, el.enemyPortrait);
     setupImageFallback(el.swordTrail, null); // trail has no fallback text to reveal
@@ -206,6 +207,95 @@
         img.classList.remove('loaded');
         if (parentPortrait) parentPortrait.classList.remove('has-sprite');
       });
+    }
+
+    /* =========================================================
+       POPUP WINDOWS (nav buttons -> Map/Quest/Inventory/Runes/Log)
+       -------------------------------------------------------
+       Each window is toggled open/closed by its nav button and can
+       be dragged by its header. All five share the same wiring —
+       there's no per-window special case here, which is what keeps
+       adding a 6th window later a one-line addition (one more
+       `.window`/`.nav-btn` pair in the HTML, nothing new in JS).
+
+       "Bring to front" is a single shared counter rather than a
+       real window-manager stacking model: every focus (open, drag
+       start, or a click anywhere on the window) bumps it to a new
+       highest z-index. That's the entire ordering rule, and it's
+       enough — this is 5 fixed popups, not an OS.               */
+    function wireWindows() {
+      var topZ = 100;
+      function bringToFront(win) {
+        topZ += 1;
+        win.style.zIndex = topZ;
+      }
+
+      document.querySelectorAll('.nav-btn').forEach(function (btn) {
+        var win = document.getElementById(btn.dataset.window);
+        btn.addEventListener('click', function () {
+          var opening = !win.classList.contains('open');
+          win.classList.toggle('open', opening);
+          btn.classList.toggle('active', opening);
+          if (opening) bringToFront(win);
+        });
+      });
+
+      document.querySelectorAll('.window-close').forEach(function (closeBtn) {
+        closeBtn.addEventListener('click', function () {
+          var win = document.getElementById(closeBtn.dataset.close);
+          win.classList.remove('open');
+          var navBtn = document.querySelector('.nav-btn[data-window="' + win.id + '"]');
+          if (navBtn) navBtn.classList.remove('active');
+        });
+      });
+
+      document.querySelectorAll('.window').forEach(function (win) {
+        // Any click on the window (not just the header) brings it
+        // forward — the header is still the only DRAG handle, this
+        // is purely about stacking order.
+        win.addEventListener('mousedown', function () { bringToFront(win); });
+        makeWindowDraggable(win, win.querySelector('.window-header'));
+      });
+    }
+
+    // Plain mouse-event dragging — no library, matching this
+    // project's "vanilla, no dependencies" rule. Switches the
+    // window from its CSS-authored `top/right` default to explicit
+    // `top/left` pixel coordinates the moment a drag starts, and
+    // clamps to the viewport so a window can never be dragged
+    // somewhere the player can't get back to (there's no "reset
+    // window positions" button, so losing one off-screen would be
+    // a real dead end, not just a visual glitch).
+    function makeWindowDraggable(win, handle) {
+      var dragging = false;
+      var offsetX = 0;
+      var offsetY = 0;
+
+      handle.addEventListener('mousedown', function (e) {
+        dragging = true;
+        var rect = win.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        // Hand off from the CSS default (top/right) to an explicit
+        // pixel position pinned to where it visually already is,
+        // so the first drag frame doesn't jump.
+        win.style.left = rect.left + 'px';
+        win.style.top = rect.top + 'px';
+        win.style.right = 'auto';
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', function (e) {
+        if (!dragging) return;
+        var maxLeft = window.innerWidth - win.offsetWidth;
+        var maxTop = window.innerHeight - win.offsetHeight;
+        var left = Math.min(Math.max(0, e.clientX - offsetX), Math.max(0, maxLeft));
+        var top = Math.min(Math.max(0, e.clientY - offsetY), Math.max(0, maxTop));
+        win.style.left = left + 'px';
+        win.style.top = top + 'px';
+      });
+
+      window.addEventListener('mouseup', function () { dragging = false; });
     }
 
     /* =========================================================
@@ -804,7 +894,11 @@
 
       el.logList.innerHTML = '';
       el.logList.appendChild(frag);
-      el.logList.scrollTop = el.logList.scrollHeight;
+      // #logList no longer scrolls itself — its enclosing window's
+      // .window-body does (see style.css's popup-window rules), so
+      // "stay pinned to the newest entry" has to scroll THAT element.
+      var scrollBox = el.logList.parentElement;
+      scrollBox.scrollTop = scrollBox.scrollHeight;
     }
 
     function update() {

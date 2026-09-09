@@ -25,6 +25,19 @@
       </div>
     </div>
 
+    <!-- The 5 popup-window triggers. Each toggles a draggable
+         `.window` (siblings of #app, at the bottom of <body> — see
+         the comment down there for why they live outside #app)
+         open/closed rather than navigating anywhere; the arena below
+         is always on screen no matter which windows are open. -->
+    <nav id="navButtons">
+      <button class="nav-btn" data-window="winMap">Map</button>
+      <button class="nav-btn" data-window="winQuest">Quest</button>
+      <button class="nav-btn" data-window="winInventory">Inventory</button>
+      <button class="nav-btn" data-window="winRunes">Runes</button>
+      <button class="nav-btn" data-window="winLog">Combat Log</button>
+    </nav>
+
     <!-- The VS arena — hero left / enemy right, split-screen frame. -->
     <section id="arena">
       <!--
@@ -111,13 +124,33 @@
       </div>
     </section>
 
-    <!-- Hunting ground: the player picks a cleared, non-boss stage
-         to farm indefinitely. Exists so future systems can gate
-         things on a stage band ("dire wolves only spawn in 30-50"),
-         and priced so it costs progression — see the XP/gold
-         relevance rule in game.js. -->
-    <div class="panel">
-      <h2>Hunting ground</h2>
+  </div>
+
+  <!-- The 5 popup windows. Deliberately siblings of #app, not
+       children of it: #app is the pinned single-screen layout
+       (overflow: hidden, sized to the viewport — see the "no page
+       scrolling" rule in style.css), while these are
+       `position: fixed` panels that float ON TOP of it and can be
+       dragged anywhere, including outside wherever #app's own box
+       ends. Nesting them inside #app would make an ancestor's
+       overflow/stacking context fight with that.
+
+       Each one keeps the exact element IDs (farmStatus, tokenLine,
+       equippedList, runeTree, logList, ...) the panels they replace
+       already used — render.js's lookups and update functions don't
+       need to change, only WHERE these elements live in the page. -->
+
+  <!-- Map: hunting ground (park on a cleared stage) + boss
+       challenges (spend a token to re-fight a beaten boss). Both are
+       "where do I send her" decisions, which is what put them on the
+       same window instead of splitting them further. -->
+  <div class="window" id="winMap">
+    <div class="window-header">
+      <span>Map</span>
+      <button class="window-close" data-close="winMap" aria-label="Close">×</button>
+    </div>
+    <div class="window-body">
+      <h3>Hunting ground</h3>
       <div id="farmStatus"></div>
       <div id="farmControls">
         <label for="farmInput">Farm stage</label>
@@ -126,14 +159,8 @@
         <button id="farmClear">Resume climbing</button>
       </div>
       <div id="farmHint"></div>
-    </div>
 
-    <!-- Boss challenge: spend a token to re-fight a boss you have
-         already beaten. Selectable rather than auto-targeted, so a
-         future "defeat Maw 10 times" unlock is something the player
-         can deliberately work toward. -->
-    <div class="panel">
-      <h2>Boss challenge</h2>
+      <h3>Boss challenge</h3>
       <div id="tokenLine"></div>
       <div id="bossControls">
         <label for="bossSelect">Challenge</label>
@@ -142,17 +169,31 @@
       </div>
       <div id="bossHint"></div>
     </div>
+  </div>
 
-    <!-- Gear (step 4): a real inventory, not auto-equip. Equipped
-         weapon/armor at the top, the inventory (with manual equip/
-         sell) and the auto-sell-by-rarity policy below. Every row
-         reserves a small square for an item icon — no art asset
-         exists yet, so it degrades to blank/fallback the same way
-         the hero/enemy sprites do (see render.js's
-         setupImageFallback), but the layout space is real now so a
-         later icon sheet just drops in without a UI change. -->
-    <div class="panel">
-      <h2>Gear</h2>
+  <!-- Quest: reserved layout only, same "not yet implemented" stub
+       pattern the Companion/Pet slots already use in the arena —
+       no quest system exists yet, but the button/window earns its
+       place on the nav bar now so a later phase just fills this in. -->
+  <div class="window" id="winQuest">
+    <div class="window-header">
+      <span>Quest</span>
+      <button class="window-close" data-close="winQuest" aria-label="Close">×</button>
+    </div>
+    <div class="window-body">
+      <p class="stub-note">Not yet implemented — planned as a future phase.</p>
+    </div>
+  </div>
+
+  <!-- Inventory: gear rework (step 4) — equipped weapon/armor, the
+       auto-sell-by-rarity policy, and the real inventory with manual
+       equip/sell. -->
+  <div class="window" id="winInventory">
+    <div class="window-header">
+      <span>Inventory</span>
+      <button class="window-close" data-close="winInventory" aria-label="Close">×</button>
+    </div>
+    <div class="window-body">
       <div id="equippedList"></div>
 
       <h3>Auto-sell on drop</h3>
@@ -165,27 +206,33 @@
       <h3>Inventory <span id="inventoryCount"></span></h3>
       <div id="inventoryList"></div>
     </div>
+  </div>
 
-    <!-- Phase 6: the real clickable rune tree. Nodes are absolutely
-         positioned inside a fixed-size canvas (see render.js's
-         RUNE_LAYOUT) so the physical/magic/hybrid shape is actually
-         visible, not just implied by a "branch" label in a flat
-         list. An SVG line overlay draws every prerequisite edge,
-         colored by whether that path is available/taken. -->
-    <div class="panel">
-      <h2>Runes</h2>
+  <!-- Runes: Phase 6's real clickable tree, unchanged — just moved
+       from an always-visible panel into a window. -->
+  <div class="window" id="winRunes">
+    <div class="window-header">
+      <span>Runes</span>
+      <button class="window-close" data-close="winRunes" aria-label="Close">×</button>
+    </div>
+    <div class="window-body">
       <div id="runeTreeWrap">
         <div id="runeTree">
           <svg id="runeTreeLines" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
         </div>
       </div>
     </div>
+  </div>
 
-    <div class="panel" id="logPanel">
-      <h2>Log</h2>
+  <!-- Combat Log. -->
+  <div class="window" id="winLog">
+    <div class="window-header">
+      <span>Combat Log</span>
+      <button class="window-close" data-close="winLog" aria-label="Close">×</button>
+    </div>
+    <div class="window-body">
       <div id="logList"></div>
     </div>
-
   </div>
 
   <!--

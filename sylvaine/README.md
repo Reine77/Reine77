@@ -320,6 +320,62 @@ other two channels; the numbers here are a baseline, not a final balance.
   rank cost, status text and button label in place, and correctly flips its
   two outgoing edges to `available`.
 
+## Popup window UI (nav bar + draggable windows)
+
+A layout rework requested directly, on top of the Phase 4/6 panels: instead
+of a long stack of always-visible panels that pushed the page taller than
+one screen, the game is now a single fixed-size view (`html`/`body` pinned
+to `height: 100%`, `overflow: hidden` — there is no page scrollbar,
+anywhere, ever) with 5 nav buttons (**Map**, **Quest**, **Inventory**,
+**Runes**, **Combat Log**) that each toggle a small floating, draggable,
+closable window on top of it.
+
+- **What moved where.** Hunting ground + boss challenge → **Map** (both are
+  "where do I send her" decisions). Gear (equipped + auto-sell policy +
+  inventory) → **Inventory**. The rune tree → **Runes**, unchanged from
+  Phase 6 otherwise. The combat log → **Combat Log**. **Quest** is a new
+  stub window with no system behind it yet — same "not yet implemented"
+  pattern the Companion/Pet arena slots already use — added because the
+  nav bar asked for 5 buttons and a quest system is on the long-term
+  roadmap, not because one exists now.
+- **Every element kept its original id** (`farmStatus`, `tokenLine`,
+  `equippedList`, `runeTree`, `logList`, ...) — only where they live in the
+  page moved. That meant zero changes to any of the existing
+  `updateFarmPanel`/`updateBossPanel`/`updateGearPanel`/`updateRuneTree`
+  functions; the only real `render.js` work was the window/nav plumbing
+  itself and rehoming the log's "stay scrolled to the newest entry" logic
+  (it used to scroll `#logList` directly; now `#logList` doesn't scroll
+  itself at all — its enclosing `.window-body` does — so that line now
+  targets `el.logList.parentElement` instead).
+- **`#arena` is the one flexible row.** Everything else in the pinned
+  layout (topbar, XP bar, nav buttons, the companion/pet support row) is
+  `flex-shrink: 0`; `#arena` is `flex: 1; min-height: 0` and absorbs
+  whatever vertical space is left over, so the layout holds with zero
+  overflow from a 640px-tall window up to 900px+ — verified directly at
+  three viewport sizes in headless Chromium, not assumed from the CSS
+  alone.
+- **Windows are plain `position: fixed` siblings of `#app`, not children of
+  it.** `#app` is the pinned/clipped single-screen layout; nesting a
+  draggable floating panel inside an `overflow: hidden` ancestor would
+  fight the "drag it anywhere" requirement the moment a window got dragged
+  near that ancestor's own edge. Living outside `#app` sidesteps that
+  entirely.
+- **Dragging is plain mouse events, no library** — matching this project's
+  zero-dependency rule. `mousedown` on a `.window-header` captures the
+  cursor's offset from the window's current top-left, hands the window off
+  from its CSS-authored default `top`/`right` position to explicit
+  `top`/`left` pixels (so the first drag frame doesn't jump), and
+  `mousemove` updates position clamped to the viewport — a window can never
+  be dragged somewhere unreachable, which matters here because there's no
+  "reset window positions" button to recover from that.
+- **Verified in headless Chromium**, not just read by eye: a nav-button
+  click actually opens its window and marks the button active; the hero
+  portrait is provably NOT covered by a window at its default position
+  (checked via bounding-rect overlap, not assumed from the CSS); a
+  simulated header drag actually moves the window (and stays moved); the
+  close button closes the window and deactivates its nav button; the page
+  has no scrollbar at 1024×640 through 1440×900.
+
 ## Hunting grounds (player-chosen farming)
 
 Added after the Phase 5 review, ahead of the companion/pet phases that need
