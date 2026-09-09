@@ -529,6 +529,87 @@ this depends on the gear-inventory work.
   pacing retune. Roughly 20 tests had been silently running under the wrong
   config. It now saves and restores the actual value.
 
+## Percent-modifier stat model (step 2 of the build-strategy rework)
+
+The prerequisite for everything left in that rework: `stats.js`'s aggregation
+was purely flat addition (`base + levelGrowth + gearMods + runeMods`). Diablo-
+style gear affixes ("+15% fire damage") and letting flat stats keep mattering
+at high stages (see Phase 2's write-up on `critChance`/`critMult` going dead
+once capped) both need a second, multiplicative layer on top.
+
+**The one rule that matters: percentages from different sources SUM before
+being applied once — they never multiply each other.**
+
+```
+damage = flatDamage * (1 + item1% + item2% + rune%)     <- this
+damage = flatDamage * (1+item1%) * (1+item2%) * ...      <- NOT this
+```
+
+The wrong version compounds — five +20% sources give `1.2⁵ ≈ 2.49×`, not
+`2.0×`, and each *additional* stacked source accelerates faster than the
+last. Against an enemy curve that grows a fixed 13%/stage, that's a runaway
+that would make the level-100 calibration (one branch maxed, ~1.15×)
+meaningless the moment gear entered the picture. The additive version is
+linear in how much you stack, which is what keeps that calibration valid —
+confirmed by re-running `tools/balance.mjs` after this change: still **1.15×**,
+unchanged, because nothing generates a percent mod yet (see below).
+
+### The bucket rules
+
+Damage percent bonuses are split into buckets that also **sum**, never
+multiply, before the one `(1 + total)` is applied:
+
+- `damagePercent` — applies to every hit, any source, any attribute ("all").
+- `physicalDamagePercent` — applies only when the hit's attribute is
+  `physical` (today: her basic attack, always).
+- `magicDamagePercent` — applies to any *non*-physical attribute (today: her
+  spell, which is `wind`) — the broad "magic" category.
+- `<element>DamagePercent` (`fireDamagePercent`, `windDamagePercent`, …) —
+  applies only to that exact attribute.
+
+So her spell (currently `wind`) gets `all + magic + wind`; her basic attack
+(currently `physical`) gets `all + physical`. `critChance`/`critMult` were
+deliberately left flat-only — "+5% crit chance" reads as +0.05 additive in
+every ARPG that uses the phrase, not as "5% of your current value," so
+giving them a `*Percent` key would be a trap, not a feature.
+
+One thing that composes *correctly* by staying separate: her own damage%
+bonus and an enemy's elemental resistance are two different multiplicative
+factors (her build vs. the enemy's nature), and they're supposed to multiply
+each other rather than sum — verified directly (check 47): a +50% physical
+bonus doesn't change the ratio between fighting a physical-resistant enemy
+and a neutral one, which stays exactly `0.7×` either way.
+
+### Where the multiplier actually gets applied
+
+Baked directly into `computeStats`'s `damage`/`spellPower` output — not into
+`game.js`'s damage-dealing code — by looking up `CONFIG.attributes.basicAttack`
+/`.spell` (which attribute each source currently carries) at compute time.
+That one decision means `heroDps`/`canWin` (the retreat gate), the actual
+damage dealt in combat, and the stat panel display all automatically agree,
+since all three already read `s.damage`/`s.spellPower` from the same cached
+`computeStats` result — zero changes needed anywhere else.
+
+The tradeoff: this couples `stats.js` to those two CONFIG fields being
+globally fixed, which they are *today*. Once the rune tree rework lets her
+choose an element for her own attacks (step 3), that lookup needs to become
+per-hero instead of config-wide — flagged directly in the code comment where
+it'll need to change.
+
+### Current state: inert, on purpose
+
+Nothing in `items.js` or `runes.js` generates a percent mod yet — this step
+was the plumbing only. `tools/balance.mjs` confirms zero drift in the
+economy as a result. Steps 3 (rune tree rework) and 4 (gear rework) are what
+actually populate these keys.
+
+`tools/checks.mjs` grew from 133 to 148 assertions, covering: additive vs.
+compounding stacking, all four bucket rules (including the two "must NOT
+leak" negative cases — magic doesn't boost physical, an unrelated element
+doesn't boost the wrong spell), `hpPercent`/`attackSpeedPercent`, flat+percent
+composing correctly on one item, the existing unknown-key warning still
+firing, and the percent-bonus/resistance separation above.
+
 ## Phase plan
 
 - [x] **1** Game logic, console only

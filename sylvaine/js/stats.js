@@ -14,7 +14,7 @@
    next recompute fixes it.
 
    So the model is:
-       final = base + levelGrowth + gearMods + runeMods
+       final = (base + levelGrowth + gearFlat + runeFlat) * (1 + percent)
    recomputed from scratch, and CACHED.
 
    Why cached: computeStats loops over gear and every purchased
@@ -23,6 +23,33 @@
    waste. Instead we set a "dirty" flag when something changes,
    and only recompute on the next read. This is the standard
    dirty-flag pattern and you will see it everywhere in games.
+
+   PERCENT MODIFIERS (added alongside flat ones)
+     Gear and runes can now also carry "+X% damage" style mods —
+     needed for the Diablo-style gear rework and the elemental
+     rune tree. The one rule that matters here: percentages from
+     DIFFERENT SOURCES SUM before being applied once, they never
+     multiply each other.
+
+         damage = flatDamage * (1 + item1% + item2% + rune%)   <- this
+         damage = flatDamage * (1+item1%) * (1+item2%) * ...   <- NOT this
+
+     The wrong version compounds: five +20% sources give 2.49x
+     (1.2^5), not 2.0x, and the more you stack the faster each
+     ADDITIONAL one accelerates you — an unbounded runaway against
+     an enemy curve that grows at a fixed 13%/stage. The right
+     version is linear in how much you stack, which is what keeps
+     the economy calibration (README's "one branch maxed" target)
+     meaningful after gear enters the picture instead of obsolete
+     the moment someone stacks three damage affixes.
+
+     Damage percent is further split into buckets that SUM with
+     each other (not multiply) before applying: a hit always gets
+     `all`, plus either `physical` (if that's its attribute) or
+     `magic` + its own specific element (if not). See
+     damagePercentFor() below — this is the one place that logic
+     lives, so the rune/gear rework only has to produce mod keys,
+     never re-derive the bucket rules.
    ============================================================= */
 (function (root) {
   'use strict';
@@ -30,13 +57,33 @@
   var Sylvaine = (root.Sylvaine = root.Sylvaine || {});
   var CONFIG = Sylvaine.CONFIG;
 
-  // The full list of stats we track. Having this as data (rather
-  // than hand-written property names in five places) means adding
-  // a new stat later is a one-line change.
+  // The full list of FLAT stats we track. Having this as data
+  // (rather than hand-written property names in five places) means
+  // adding a new stat later is a one-line change.
   var STAT_KEYS = [
     'hp', 'damage', 'attackSpeed', 'critChance',
     'critMult', 'spellPower', 'spellCooldown'
   ];
+
+  // Percent-modifier keys. Deliberately a SEPARATE namespace from
+  // STAT_KEYS rather than nested objects inside mods — item/rune
+  // mods stay one flat { key: number } map either way, so nothing
+  // about how items.js or runes.js BUILD a mods object has to
+  // change; they just get more possible key names to roll from.
+  //
+  // Not every flat stat gets a percent counterpart. critChance and
+  // critMult stay flat-only on purpose — "+5% crit chance" reads,
+  // in every ARPG that has the phrase, as +0.05 additive to an
+  // already-0-to-1 value, not as "5% of your current crit chance"
+  // — so giving them a *Percent key would be a trap, not a feature.
+  // spellCooldown is a reduction already handled in seconds; a
+  // percent version can be added later without disturbing this one.
+  var ELEMENTAL_PERCENT_KEYS = CONFIG.attributes.all
+    .filter(function (a) { return a !== 'physical'; })
+    .map(function (a) { return a + 'DamagePercent'; });
+
+  var PERCENT_KEYS = ['damagePercent', 'physicalDamagePercent', 'magicDamagePercent',
+    'hpPercent', 'attackSpeedPercent'].concat(ELEMENTAL_PERCENT_KEYS);
 
   function makeHero() {
     return {
@@ -99,19 +146,46 @@
 
     // 3. Gear mods — Phase 2 fills hero.equipped. The loop is
     //    already here so Phase 2 needs no change to this file.
+    //    Percent mods are gathered into a SEPARATE accumulator
+    //    (`pct`) rather than folded straight into `out`, because
+    //    they all have to be SUMMED across every source before
+    //    being applied — applying each one as it's found would
+    //    compound them instead (see this file's header).
+    var pct = {};
     var slots = ['weapon', 'armor'];
     for (i = 0; i < slots.length; i++) {
       var item = hero.equipped[slots[i]];
       if (!item || !item.mods) continue;
       applyMods(out, item.mods);
+      applyPercentMods(pct, item.mods);
     }
 
     // 4. Rune mods — Phase 3 fills hero.runes.
     if (Sylvaine.Runes && typeof Sylvaine.Runes.modsFor === 'function') {
-      applyMods(out, Sylvaine.Runes.modsFor(hero.runes));
+      var runeMods = Sylvaine.Runes.modsFor(hero.runes);
+      applyMods(out, runeMods);
+      applyPercentMods(pct, runeMods);
     }
 
-    // 5. Clamp. Reductions must not produce a zero or negative
+    // 5. Apply the summed percentages, ONCE, to the flat totals
+    //    from steps 1-4. This has to happen before the floor/clamp
+    //    step below (a percentage could in principle push a value
+    //    past a floor) and needs to know WHICH attribute each of
+    //    damage/spellPower carries, since damage% bonuses are
+    //    bucketed by attribute — see damagePercentFor().
+    //
+    //    Reads CONFIG.attributes.basicAttack/spell rather than
+    //    something on the hero: today those are fixed globally
+    //    (the rune tree can't yet let her choose an element for her
+    //    own attacks — that's the next step of this rework). When
+    //    it can, this becomes hero-specific instead of config-wide,
+    //    and this is the one place that will need to change.
+    out.hp         *= (1 + (pct.hpPercent || 0));
+    out.attackSpeed *= (1 + (pct.attackSpeedPercent || 0));
+    out.damage      *= (1 + damagePercentFor(pct, CONFIG.attributes.basicAttack));
+    out.spellPower   *= (1 + damagePercentFor(pct, CONFIG.attributes.spell));
+
+    // 6. Clamp. Reductions must not produce a zero or negative
     //    interval — see the comment in config.js floors.
     out.attackSpeed   = Math.max(CONFIG.floors.attackSpeed,   out.attackSpeed);
     out.spellCooldown = Math.max(CONFIG.floors.spellCooldown, out.spellCooldown);
@@ -119,7 +193,7 @@
     out.hp            = Math.max(1, out.hp);
     out.damage        = Math.max(0, out.damage);
 
-    // 6. Derived, convenience values. Computed once here rather
+    // 7. Derived, convenience values. Computed once here rather
     //    than divided out every tick in the combat code.
     out.maxHp         = out.hp;
     out.attackInterval = 1 / out.attackSpeed;
@@ -129,13 +203,39 @@
     return out;
   }
 
-  // Add a { statName: delta } object into an accumulator.
-  // Unknown keys are ignored rather than silently creating a
-  // stat that nothing reads — that turns a typo in an item
-  // definition into a visible warning instead of a dead mod.
+  // The one place the "which percent buckets apply to this hit"
+  // rule lives. `attribute` is whichever element the damage SOURCE
+  // (basic attack or spell) currently carries.
+  //
+  //   physical hit -> `all` + `physical`
+  //   any other element -> `all` + `magic` (the broad category)
+  //                         + that element's own specific bucket
+  //
+  // These three (or two, for physical) all SUM before the single
+  // `(1 + ...)` multiply in computeStats — that's what keeps this
+  // linear rather than compounding, same as every other percent
+  // source in this file.
+  function damagePercentFor(pct, attribute) {
+    var bonus = pct.damagePercent || 0;
+    if (attribute === 'physical') {
+      bonus += pct.physicalDamagePercent || 0;
+    } else {
+      bonus += pct.magicDamagePercent || 0;
+      bonus += pct[attribute + 'DamagePercent'] || 0;
+    }
+    return bonus;
+  }
+
+  // Add a { statName: delta } object into a FLAT accumulator.
+  // Percent keys are recognised and silently skipped here (they're
+  // not an error, they just belong to applyPercentMods instead) —
+  // only a key in neither list triggers the warning, which turns a
+  // typo in an item/rune definition into something visible instead
+  // of a silently dead mod.
   function applyMods(acc, mods) {
     for (var key in mods) {
       if (!Object.prototype.hasOwnProperty.call(mods, key)) continue;
+      if (PERCENT_KEYS.indexOf(key) !== -1) continue;
       if (STAT_KEYS.indexOf(key) === -1) {
         console.warn('stats.js: ignoring unknown stat "' + key + '"');
         continue;
@@ -145,12 +245,29 @@
     return acc;
   }
 
+  // The percent-side counterpart to applyMods — sums every
+  // recognised *Percent key across however many mods objects it's
+  // called with (once per equipped item, once for the combined
+  // rune total). Flat keys are silently skipped; applyMods already
+  // owns warning about anything neither function recognises.
+  function applyPercentMods(acc, mods) {
+    for (var key in mods) {
+      if (!Object.prototype.hasOwnProperty.call(mods, key)) continue;
+      if (PERCENT_KEYS.indexOf(key) === -1) continue;
+      acc[key] = (acc[key] || 0) + mods[key];
+    }
+    return acc;
+  }
+
   Sylvaine.Stats = {
     STAT_KEYS: STAT_KEYS,
+    PERCENT_KEYS: PERCENT_KEYS,
     makeHero: makeHero,
     computeStats: computeStats,
     markDirty: markDirty,
     xpForLevel: xpForLevel,
-    applyMods: applyMods
+    applyMods: applyMods,
+    applyPercentMods: applyPercentMods,
+    damagePercentFor: damagePercentFor
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

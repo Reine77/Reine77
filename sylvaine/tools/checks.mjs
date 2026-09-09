@@ -876,6 +876,142 @@ console.log('\nPhase 1 checks\n');
     'the counter must increment before the equip branch');
 }
 
+/* --- 42. percent modifiers stack ADDITIVELY, not compounding -- */
+{
+  // The whole point: five +20% sources must give +100% (2.0x), not
+  // 1.2^5 (~2.49x). Equip two items each carrying a physical%
+  // bonus and check the combined multiplier is their SUM.
+  const state = Game.createState({ seed: 70, echo: false });
+  const baseline = Stats.computeStats(state.hero).damage;
+
+  state.hero.equipped.weapon = { mods: { physicalDamagePercent: 0.20 } };
+  state.hero.equipped.armor  = { mods: { physicalDamagePercent: 0.20 } };
+  Stats.markDirty(state.hero);
+  const withTwo = Stats.computeStats(state.hero).damage;
+
+  const expectedAdditive = baseline * 1.40;
+  const expectedCompounding = baseline * Math.pow(1.20, 2); // the WRONG model — 1.44x
+
+  check('two +20% sources give +40% (additive), not +44% (compounding)',
+    Math.abs(withTwo - expectedAdditive) < 0.01,
+    withTwo.toFixed(2) + ' vs additive ' + expectedAdditive.toFixed(2) +
+    ' (compounding would give ' + expectedCompounding.toFixed(2) + ')');
+}
+
+/* --- 43. damage% buckets: all / physical / magic / element ---- */
+{
+  const state = Game.createState({ seed: 71, echo: false });
+  const base = Stats.computeStats(state.hero).damage; // basic attack is 'physical'
+  const A = CONFIG.attributes;
+
+  function withMods(mods) {
+    const st = Game.createState({ seed: 71, echo: false });
+    st.hero.equipped.weapon = { mods: mods };
+    Stats.markDirty(st.hero);
+    return Stats.computeStats(st.hero).damage;
+  }
+
+  check('physicalDamagePercent boosts the (physical) basic attack',
+    withMods({ physicalDamagePercent: 0.30 }) > base * 1.29);
+
+  check('magicDamagePercent does NOT boost a physical basic attack',
+    Math.abs(withMods({ magicDamagePercent: 0.30 }) - base) < 0.01);
+
+  check('a specific element (fireDamagePercent) does not leak into physical',
+    Math.abs(withMods({ fireDamagePercent: 0.30 }) - base) < 0.01);
+
+  check('damagePercent ("all") boosts physical damage too',
+    withMods({ damagePercent: 0.10 }) > base * 1.09);
+
+  // Spell is 'wind' (a magic-category element) per CONFIG.attributes.spell.
+  check('spell attribute is a magic-category element (test assumption)',
+    A.spell !== 'physical');
+
+  // spellPower is 0 at level 1 with no arcane rune bought, so a
+  // percent bonus of zero is still zero — give her a nonzero
+  // baseline first, or ">" against 0 is trivially, meaninglessly
+  // true/false regardless of whether the multiplier actually works.
+  function withSpellPower(mods) {
+    const st = Game.createState({ seed: 71, echo: false });
+    st.hero.base.spellPower = 50;
+    st.hero.equipped.weapon = { mods: mods };
+    Stats.markDirty(st.hero);
+    return Stats.computeStats(st.hero).spellPower;
+  }
+  const baseSpell = withSpellPower({});
+
+  check('magicDamagePercent boosts spellPower (spell is a magic element)',
+    withSpellPower({ magicDamagePercent: 0.25 }) > baseSpell * 1.24);
+
+  check("the spell's own specific element (wind) boosts spellPower too",
+    withSpellPower({ windDamagePercent: 0.25 }) > baseSpell * 1.24);
+
+  check('an UNRELATED specific element (fire) does not boost the wind spell',
+    Math.abs(withSpellPower({ fireDamagePercent: 0.25 }) - baseSpell) < 0.01);
+}
+
+/* --- 44. hp% and attackSpeed% apply as expected ---------------- */
+{
+  const state = Game.createState({ seed: 72, echo: false });
+  const before = Stats.computeStats(state.hero);
+
+  state.hero.equipped.armor = { mods: { hpPercent: 0.50, attackSpeedPercent: 0.25 } };
+  Stats.markDirty(state.hero);
+  const after = Stats.computeStats(state.hero);
+
+  check('hpPercent scales max HP', Math.abs(after.maxHp - before.maxHp * 1.5) < 0.01,
+    after.maxHp + ' vs ' + (before.maxHp * 1.5));
+  check('attackSpeedPercent scales attack speed',
+    Math.abs(after.attackSpeed - before.attackSpeed * 1.25) < 0.01);
+  check('attackInterval stays consistent with the boosted attack speed',
+    Math.abs(after.attackInterval - 1 / after.attackSpeed) < 1e-9);
+}
+
+/* --- 45. percent and flat mods on the SAME item both apply ---- */
+{
+  const state = Game.createState({ seed: 73, echo: false });
+  const before = Stats.computeStats(state.hero).damage;
+  state.hero.equipped.weapon = { mods: { damage: 20, physicalDamagePercent: 0.10 } };
+  Stats.markDirty(state.hero);
+  const after = Stats.computeStats(state.hero).damage;
+  const expected = (before + 20) * 1.10;
+  check('flat + percent mods on one item compose correctly (flat first, then percent)',
+    Math.abs(after - expected) < 0.01, after.toFixed(2) + ' vs ' + expected.toFixed(2));
+}
+
+/* --- 46. a truly unknown mod key still warns (regression) ----- */
+{
+  const originalWarn = console.warn;
+  let warned = false;
+  console.warn = () => { warned = true; };
+  const state = Game.createState({ seed: 74, echo: false });
+  state.hero.equipped.weapon = { mods: { totallyNotARealStat: 5 } };
+  Stats.markDirty(state.hero);
+  Stats.computeStats(state.hero);
+  console.warn = originalWarn;
+  check('a genuinely unknown mod key still triggers a warning', warned === true);
+}
+
+/* --- 47. her own damage% bonus and enemy resistance are SEPARATE
+     multiplicative factors (correctly so — one is her investment,
+     the other is the enemy's nature; they should multiply each
+     other, not sum) ------------------------------------------- */
+{
+  const state = Game.createState({ seed: 75, echo: false });
+  state.hero.equipped.weapon = { mods: { physicalDamagePercent: 0.50 } };
+  Stats.markDirty(state.hero);
+
+  const resistant = { weakTo: [], resists: ['physical'] };
+  const neutral = { weakTo: [], resists: [] };
+
+  const dpsVsResistant = Game.heroDps(state, resistant);
+  const dpsVsNeutral = Game.heroDps(state, neutral);
+  const expectedRatio = CONFIG.attributes.resistMult; // 0.7 — her own bonus cancels out of the ratio
+  check('the resist multiplier still applies on top of her own damage% bonus',
+    Math.abs(dpsVsResistant / dpsVsNeutral - expectedRatio) < 0.02,
+    (dpsVsResistant / dpsVsNeutral).toFixed(3) + ' vs expected ' + expectedRatio);
+}
+
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');
 if (failures.length) {
   console.log('failed: ' + failures.join(', '));
