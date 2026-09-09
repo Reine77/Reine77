@@ -481,3 +481,18 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 #logList .kind-item { color: #7ab0d9; }
 #logList .kind-rune { color: var(--gold); }
 #logList .kind-story { color: var(--text-dim); font-style: italic; }
+
+/* ---- elemental tags on the enemy panel ----------------------
+   Deliberately always visible rather than a hover tooltip: these
+   are meant to drive build and hunting-ground decisions, so they
+   have to be readable at a glance while the game plays itself. */
+.enemy-tags { margin-top: .3rem; display: flex; gap: .3rem; flex-wrap: wrap; justify-content: center; }
+.enemy-tags .tag {
+  font-size: .62rem;
+  letter-spacing: .04em;
+  padding: .05rem .35rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.enemy-tags .weak   { color: #e0a04a; border-color: #6b4a1f; }
+.enemy-tags .resist { color: #7ab0d9; border-color: #2f4f66; }

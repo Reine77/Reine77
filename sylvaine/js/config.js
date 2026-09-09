@@ -120,6 +120,37 @@
       goldMult:     5.0
     },
 
+    /* ---- Elemental attributes -------------------------------
+       Every source of damage carries exactly ONE attribute, and
+       every enemy may be weak to or resistant against some of
+       them. Because an attack has one attribute, at most one
+       multiplier can ever apply — resistances never stack, so the
+       worst case is bounded and predictable. That is deliberate:
+       an auto-battler can't swap loadouts mid-fight, so an
+       unbounded resistance stack would just be an invisible wall.
+
+       LENIENCY EARLY is handled in enemies.js as DATA, not as a
+       special case here: the early grunts (goblin, war-hound, orc)
+       simply have no tags at all, so nothing an early player does
+       can be punished by a system they haven't learned yet. Tags
+       start appearing on mid-tier enemies and get dense on bosses.  */
+    attributes: {
+      // The full set. Adding one here is enough for enemies.js and
+      // (later) gear affixes to reference it.
+      all: ['physical', 'fire', 'wind', 'earth', 'dark', 'holy'],
+
+      weakMult:   1.5,  // enemy is weak to this attribute -> more damage
+      resistMult: 0.7,  // enemy resists it -> less damage
+      neutralMult: 1.0,
+
+      // What the hero's two damage sources currently count as.
+      // Nothing can change these yet — the rune rework is what
+      // will let her spec into fire/dark/holy and so on. Kept in
+      // config so that change is a data edit, not a code hunt.
+      basicAttack: 'physical',
+      spell:       'wind'
+    },
+
     /* ---- Runes ----------------------------------------------
        Every node can be bought `maxRank` times. Each rank adds the
        node's mods again (linear power) while costing rankCostMult

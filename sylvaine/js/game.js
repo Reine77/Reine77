@@ -86,6 +86,8 @@
         damageTaken: 0,
         crits: 0,
         spellCasts: 0,
+        weakHits: 0,      // hits that landed on an elemental weakness
+        resistedHits: 0,  // hits blunted by a resistance
         goldEarned: 0,
         fightsFought: 0,
 
@@ -208,18 +210,31 @@
      If ttk is not comfortably below ttd, she cannot win.
      "Expected" DPS averages crits in rather than gambling on
      them, which is the honest way to predict a long fight.   */
-  function heroDps(state) {
+  // `against` is optional. Passing an enemy folds the elemental
+  // matchup in, which MATTERS for canWin: a boss that resists
+  // physical takes 30% less from her sword, and a winnability check
+  // that ignored that would march her into fights she cannot win
+  // and quietly break the retreat gate. Note the multipliers are
+  // applied PER SOURCE, not to the total — her sword and her spell
+  // have different attributes and can be matched up differently
+  // against the same enemy.
+  function heroDps(state, against) {
     var s = Stats.computeStats(state.hero);
+    var A = CONFIG.attributes;
+
     var avgHit = s.damage * (1 + s.critChance * (s.critMult - 1));
-    var dps = avgHit * s.attackSpeed;
+    var dps = avgHit * s.attackSpeed *
+      (against ? attributeMultiplier(against, A.basicAttack) : 1);
+
     if (state.hero.spellUnlocked) {
-      dps += (s.spellPower * CONFIG.combat.spellDamageMult) / s.spellCooldown;
+      dps += ((s.spellPower * CONFIG.combat.spellDamageMult) / s.spellCooldown) *
+        (against ? attributeMultiplier(against, A.spell) : 1);
     }
     return dps;
   }
 
   function canWin(state, enemy) {
-    var dps = heroDps(state);
+    var dps = heroDps(state, enemy);
     if (dps <= 0) return false;
 
     var ttk = enemy.hp / dps;
@@ -264,7 +279,7 @@
     if (crit) state.totals.crits++;
 
     emit(state, 'heroAttack', { crit: crit, damage: damage });
-    damageEnemy(state, damage, crit ? 'crit' : 'hit');
+    damageEnemy(state, damage, crit ? 'crit' : 'hit', CONFIG.attributes.basicAttack);
   }
 
   function castSpell(state) {
@@ -273,21 +288,49 @@
     state.totals.spellCasts++;
 
     emit(state, 'heroSpell', { damage: damage });
-    damageEnemy(state, damage, 'spell');
+    damageEnemy(state, damage, 'spell', CONFIG.attributes.spell);
   }
 
-  function damageEnemy(state, damage, kind) {
+  /* ---- Elemental matchup -------------------------------------
+     Returns the multiplier a given attribute gets against a given
+     enemy. Exactly one branch can apply — an attack has one
+     attribute, so it is weak OR resisted OR neither, never a stack
+     of several. That keeps the worst case bounded, which matters
+     in a game where the player cannot swap loadouts mid-fight.
+
+     `weakTo` wins ties, on the principle that a stated weakness is
+     a more specific statement than a stated resistance (and a
+     roster entry listing both for the same attribute is a data
+     bug worth surfacing as generous rather than punishing).     */
+  function attributeMultiplier(enemy, attribute) {
+    var A = CONFIG.attributes;
+    if (!attribute || !enemy) return A.neutralMult;
+    if (enemy.weakTo && enemy.weakTo.indexOf(attribute) !== -1) return A.weakMult;
+    if (enemy.resists && enemy.resists.indexOf(attribute) !== -1) return A.resistMult;
+    return A.neutralMult;
+  }
+
+  function damageEnemy(state, damage, kind, attribute) {
     var enemy = state.enemy;
-    damage = Math.round(damage * 10) / 10;
+    attribute = attribute || CONFIG.attributes.basicAttack;
+
+    var mult = attributeMultiplier(enemy, attribute);
+    damage = Math.round(damage * mult * 10) / 10;
+
     enemy.hp -= damage;
     state.totals.damageDealt += damage;
+    if (mult > 1) state.totals.weakHits++;
+    else if (mult < 1) state.totals.resistedHits++;
 
     if (CONFIG.debug.logEverySwing) {
+      var tag = mult > 1 ? ' WEAK!' : (mult < 1 ? ' (resisted)' : '');
       state.log.push(kind, (kind === 'crit' ? 'CRIT! ' : kind === 'spell' ? 'Spell ' : '') +
-        damage + ' -> ' + enemy.name + ' (' + Math.max(0, Math.round(enemy.hp)) +
-        '/' + enemy.maxHp + ')', state.time);
+        damage + ' ' + attribute + tag + ' -> ' + enemy.name +
+        ' (' + Math.max(0, Math.round(enemy.hp)) + '/' + enemy.maxHp + ')', state.time);
     }
-    emit(state, 'enemyDamaged', { damage: damage, kind: kind, enemy: enemy });
+    emit(state, 'enemyDamaged', {
+      damage: damage, kind: kind, enemy: enemy, attribute: attribute, mult: mult
+    });
 
     if (enemy.hp <= 0) killEnemy(state);
   }
@@ -595,6 +638,7 @@
     heroDps: heroDps,
     canWin: canWin,
     gainXp: gainXp,
+    attributeMultiplier: attributeMultiplier,
 
     // Hunting grounds (player-chosen farming)
     canFarmStage: canFarmStage,

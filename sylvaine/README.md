@@ -383,6 +383,53 @@ change, deliberately not done yet.
 `node tools/balance.mjs --branch arcane --days 5` re-runs the whole
 measurement.
 
+## Elemental attributes (step 1 of the build-strategy rework)
+
+Six attributes — `physical, fire, wind, earth, dark, holy`. Every source of
+damage carries exactly **one**, and enemies carry `weakTo` / `resists` lists.
+Weak = 1.5x damage, resisted = 0.7x, otherwise 1.0x.
+
+**Resistances can never stack.** An attack has one attribute, so at most one
+multiplier applies — the worst case is bounded and predictable. That's
+deliberate: an auto-battler can't swap loadouts mid-fight, so an unbounded
+resistance stack would just be an invisible wall.
+
+It cost almost nothing to add because every damage source already funnelled
+through a single `damageEnemy()` in `game.js` — attributes needed exactly one
+interception point.
+
+### Leniency is data, not a special case
+
+Early grunts (goblin, war-hound, orc) have **no tags at all**, and the first
+tagged enemy now appears after the first boss. Nothing punishes a player for a
+system they haven't met yet. There is no "leniency multiplier" anywhere in the
+code — it's just an empty list on the early roster.
+
+### The mistake this step caught
+
+The first pass tagged **12 of 24** enemies as resisting `physical` — and
+`physical` is her only basic attack, with no way to spec out of it until the
+rune rework. That's a 30% damage cut across half the game with **zero
+counterplay**, and it immediately showed up as a test failure (she stalled and
+stopped climbing). Trimmed to 5 of 24, kept only where "your sword doesn't work
+here" genuinely reads: wraith (incorporeal), stone golem, black knight (plate),
+ettin, and the final boss.
+
+The general rule it taught, worth keeping for the next steps: **don't ship a
+counter before its counterplay exists.** More physical resistance can be added
+in the rune step, once she can actually respond to it.
+
+### Current state is deliberately near-invisible
+
+A 45-minute run logs ~172 hits on a weakness and **0 resisted** — she only
+fields physical and wind, so today the system is almost pure upside. It
+sharpens when the rune rework gives her fire/dark/holy to choose between.
+Tags are shown on the enemy panel rather than hidden, since they're meant to
+drive build and hunting-ground decisions.
+
+`canWin` folds the matchup in per damage source, so the retreat gate can't
+march her into a fight the numbers say she loses.
+
 ## Phase plan
 
 - [x] **1** Game logic, console only

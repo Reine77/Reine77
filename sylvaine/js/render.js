@@ -103,6 +103,7 @@
       enemyHpFill:   document.getElementById('enemyHpFill'),
       enemyHpText:   document.getElementById('enemyHpText'),
       enemySubstats: document.getElementById('enemySubstats'),
+      enemyTags:     document.getElementById('enemyTags'),
 
       statDamage:  document.getElementById('statDamage'),
       statSpeed:   document.getElementById('statSpeed'),
@@ -366,6 +367,7 @@
     // stage change or a keystroke — writing innerHTML 60x/second for
     // an unchanged string is exactly the waste this file's header
     // says it avoids, so compare first and write only on a real change.
+    var lastEnemyTags = null;
     var lastFarmStatus = null;
     var lastFarmHint = null;
 
@@ -511,12 +513,28 @@
         el.enemyHpText.textContent = Math.max(0, Math.round(enemy.hp)) + ' / ' + enemy.maxHp;
         el.enemySubstats.textContent = 'dmg ' + enemy.damage.toFixed(1) +
           ' · spd ' + enemy.attackSpeed.toFixed(2) + '/s';
+
+        // Elemental tags shown explicitly. An unseen damage
+        // multiplier is just an invisible wall — if the player is
+        // meant to build around these, they have to be readable.
+        var tagHtml = '';
+        if (enemy.weakTo && enemy.weakTo.length) {
+          tagHtml += '<span class="tag weak">weak: ' + enemy.weakTo.join(', ') + '</span>';
+        }
+        if (enemy.resists && enemy.resists.length) {
+          tagHtml += '<span class="tag resist">resists: ' + enemy.resists.join(', ') + '</span>';
+        }
+        if (tagHtml !== lastEnemyTags) {
+          el.enemyTags.innerHTML = tagHtml;
+          lastEnemyTags = tagHtml;
+        }
       } else {
         el.enemyName.textContent = state.phase === 'retreating' ? 'Retreating…' : '…';
         el.enemyBoss.classList.remove('visible');
         el.enemyHpFill.style.width = '0%';
         el.enemyHpText.textContent = '';
         el.enemySubstats.textContent = '';
+        if (lastEnemyTags !== '') { el.enemyTags.innerHTML = ''; lastEnemyTags = ''; }
       }
 
       // ---- hero stats ----

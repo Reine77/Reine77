@@ -546,10 +546,17 @@ console.log('\nPhase 1 checks\n');
 
   Game.clearFarmTarget(state);
   check('farmTarget clears', state.farmTarget === null);
-  const stageAtRelease = state.stage;
+  // Assert on the FRONTIER, not on state.stage: `stage` oscillates
+  // every time she retreats and re-advances, so sampling it at an
+  // arbitrary moment is a coin flip. highestNormalCleared only ever
+  // goes up, which is what "she is making progress again" means.
+  const frontierAtRelease = state.highestNormalCleared;
   for (let i = 0; i < 60 * 60 * 15; i++) Game.step(state, 1 / 60);
-  check('she climbs again after release', state.stage > stageAtRelease,
-    stageAtRelease + ' -> ' + state.stage);
+  check('she climbs again after release',
+    state.highestNormalCleared > frontierAtRelease,
+    frontierAtRelease + ' -> ' + state.highestNormalCleared);
+  check('and she is no longer pinned to the old hunting ground',
+    state.stage !== 3, 'stage ' + state.stage);
 }
 
 /* --- 30. kill counts are tracked per creature type -------- */
@@ -612,6 +619,90 @@ console.log('\nPhase 1 checks\n');
   check('XP past the level cap is ignored', state.hero.level === CONFIG.levelCap,
     String(state.hero.level));
   check('and no XP is banked at the cap either', state.hero.xp === 0, String(state.hero.xp));
+}
+
+/* --- 33. elemental attributes ------------------------------- */
+{
+  const A = CONFIG.attributes;
+  const rng = Sylvaine.makeRng(1);
+
+  // Every enemy the roster can produce must carry both tag lists.
+  let shaped = true, bad = '';
+  for (let stage = 1; stage <= 120; stage++) {
+    const e = Enemies.spawn(stage, rng);
+    if (!Array.isArray(e.weakTo) || !Array.isArray(e.resists)) { shaped = false; bad = e.name; }
+    for (const t of e.weakTo.concat(e.resists)) {
+      if (A.all.indexOf(t) === -1) { shaped = false; bad = e.name + ' has unknown tag "' + t + '"'; }
+    }
+  }
+  check('every spawned enemy has valid weakTo/resists lists', shaped, bad);
+
+  // The matchup itself.
+  const dummy = { weakTo: ['fire'], resists: ['physical', 'dark'] };
+  check('a weakness multiplies damage up',
+    Game.attributeMultiplier(dummy, 'fire') === A.weakMult);
+  check('a resistance multiplies damage down',
+    Game.attributeMultiplier(dummy, 'physical') === A.resistMult);
+  check('an untagged attribute is neutral',
+    Game.attributeMultiplier(dummy, 'holy') === A.neutralMult);
+
+  // At most ONE multiplier can ever apply, since an attack has one
+  // attribute — resistances must not be able to stack.
+  const many = { weakTo: [], resists: ['physical', 'fire', 'dark', 'earth'] };
+  check('resistances never stack (worst case is a single multiplier)',
+    Game.attributeMultiplier(many, 'physical') === A.resistMult);
+
+  check('weakness wins over a contradictory resistance',
+    Game.attributeMultiplier({ weakTo: ['fire'], resists: ['fire'] }, 'fire') === A.weakMult);
+}
+
+/* --- 34. early game stays lenient --------------------------- */
+{
+  // The first stages must not punish a player who has no way to
+  // respond yet — she cannot change her attack's attribute until
+  // the rune rework exists.
+  const rng = Sylvaine.makeRng(2);
+  let taggedEarly = 0;
+  for (let i = 0; i < 400; i++) {
+    const e = Enemies.spawn(1 + (i % 8), rng); // stages 1-8, all non-boss
+    if (e.weakTo.length || e.resists.length) taggedEarly++;
+  }
+  check('stage 1-8 enemies carry no elemental tags at all', taggedEarly === 0,
+    taggedEarly + ' tagged spawns');
+
+  // And her own attack attribute must not be widely resisted while
+  // she has no alternative to it.
+  const physResisters = Object.values(Enemies.baseTypes)
+    .filter(b => b.resists.indexOf('physical') !== -1).length;
+  const total = Object.keys(Enemies.baseTypes).length;
+  check('physical (her only basic attack) is resisted by a minority of the roster',
+    physResisters <= total / 3, physResisters + '/' + total);
+}
+
+/* --- 35. bosses are elementally hard ------------------------ */
+{
+  const rng = Sylvaine.makeRng(3);
+  let ok = true, detail = '';
+  for (const stage of [10, 20, 30, 40]) {
+    const b = Enemies.spawn(stage, rng);
+    if (b.resists.length < 2) { ok = false; detail = b.name + ' resists only ' + b.resists.length; }
+    if (b.weakTo.length > 1) { ok = false; detail = b.name + ' has ' + b.weakTo.length + ' weaknesses'; }
+  }
+  check('each boss resists 2+ attributes and is weak to at most 1', ok, detail);
+}
+
+/* --- 36. the matchup reaches the winnability check ---------- */
+{
+  // canWin must see resistances, or the retreat gate will march her
+  // into fights the numbers say she loses.
+  const state = Game.createState({ seed: 41, echo: false });
+  const neutral  = { weakTo: [], resists: [] };
+  const resistant = { weakTo: [], resists: [CONFIG.attributes.basicAttack] };
+  check('heroDps drops against an enemy that resists her attack',
+    Game.heroDps(state, resistant) < Game.heroDps(state, neutral),
+    Game.heroDps(state, resistant).toFixed(1) + ' vs ' + Game.heroDps(state, neutral).toFixed(1));
+  check('heroDps with no enemy given is the unmodified baseline',
+    Game.heroDps(state) === Game.heroDps(state, neutral));
 }
 
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');

@@ -35,34 +35,54 @@
      rebalanced singles, same as everything else here.          */
   var baseTypes = {
     // ---- early: common grunts (stage ~1-30) ----
-    goblin:      { name: 'Goblin',            sprite: 'goblin.png',        scale: 0.70, hpMult: 0.80, damageMult: 0.85, attackSpeedMult: 1.15 },
-    warhound:    { name: 'War-Hound',         sprite: 'warhound.png',      scale: 0.80, hpMult: 0.75, damageMult: 0.95, attackSpeedMult: 1.40 },
-    orc:         { name: 'Orc',               sprite: 'orc.png',          scale: 1.00, hpMult: 1.00, damageMult: 1.00, attackSpeedMult: 1.00 },
+    goblin:      { name: 'Goblin',            sprite: 'goblin.png',        scale: 0.70, hpMult: 0.80, damageMult: 0.85, attackSpeedMult: 1.15,
+                   weakTo: [],           resists: [] },
+    warhound:    { name: 'War-Hound',         sprite: 'warhound.png',      scale: 0.80, hpMult: 0.75, damageMult: 0.95, attackSpeedMult: 1.40,
+                   weakTo: [],           resists: [] },
+    orc:         { name: 'Orc',               sprite: 'orc.png',          scale: 1.00, hpMult: 1.00, damageMult: 1.00, attackSpeedMult: 1.00,
+                   weakTo: [],           resists: [] },
 
     // ---- mid-early: grunts start banding together (stage ~15-45) ----
-    goblinPack:  { name: 'Goblin Horde',      sprite: 'goblin_horde.png',  scale: 0.85, hpMult: 1.10, damageMult: 1.00, attackSpeedMult: 1.30 },
-    warhoundPack:{ name: 'War-Hound Pack',    sprite: 'warhound_pack.png', scale: 0.95, hpMult: 1.05, damageMult: 1.05, attackSpeedMult: 1.55 },
-    shaman:      { name: 'Horde Shaman',      sprite: 'shaman.png',        scale: 0.95, hpMult: 0.85, damageMult: 1.30, attackSpeedMult: 0.80 },
-    orcBrute:    { name: 'Orc Brute',         sprite: 'orc_brute.png',     scale: 1.15, hpMult: 1.25, damageMult: 1.20, attackSpeedMult: 0.90 },
-    direWolf:    { name: 'Dire Wolf',         sprite: 'dire_wolf.png',     scale: 0.90, hpMult: 0.90, damageMult: 1.00, attackSpeedMult: 1.60 },
+    goblinPack:  { name: 'Goblin Horde',      sprite: 'goblin_horde.png',  scale: 0.85, hpMult: 1.10, damageMult: 1.00, attackSpeedMult: 1.30,
+                   weakTo: ['fire'],     resists: [] },
+    warhoundPack:{ name: 'War-Hound Pack',    sprite: 'warhound_pack.png', scale: 0.95, hpMult: 1.05, damageMult: 1.05, attackSpeedMult: 1.55,
+                   weakTo: ['fire'],     resists: [] },
+    shaman:      { name: 'Horde Shaman',      sprite: 'shaman.png',        scale: 0.95, hpMult: 0.85, damageMult: 1.30, attackSpeedMult: 0.80,
+                   weakTo: ['physical'], resists: ['dark'] },
+    orcBrute:    { name: 'Orc Brute',         sprite: 'orc_brute.png',     scale: 1.15, hpMult: 1.25, damageMult: 1.20, attackSpeedMult: 0.90,
+                   weakTo: ['wind'],     resists: ['earth'] },
+    direWolf:    { name: 'Dire Wolf',         sprite: 'dire_wolf.png',     scale: 0.90, hpMult: 0.90, damageMult: 1.00, attackSpeedMult: 1.60,
+                   weakTo: ['fire'],     resists: [] },
 
     // ---- mid: the heavy hitters proper (stage ~20-60) ----
-    troll:       { name: 'Troll',             sprite: 'troll.png',         scale: 1.25, hpMult: 1.45, damageMult: 1.05, attackSpeedMult: 0.75 },
-    ogre:        { name: 'Ogre',              sprite: 'ogre.png',          scale: 1.45, hpMult: 1.70, damageMult: 1.25, attackSpeedMult: 0.60 },
-    harpy:       { name: 'Harpy',             sprite: 'harpy.png',         scale: 0.80, hpMult: 0.75, damageMult: 1.05, attackSpeedMult: 1.50 },
+    troll:       { name: 'Troll',             sprite: 'troll.png',         scale: 1.25, hpMult: 1.45, damageMult: 1.05, attackSpeedMult: 0.75,
+                   weakTo: ['fire'],     resists: ['earth'] },
+    ogre:        { name: 'Ogre',              sprite: 'ogre.png',          scale: 1.45, hpMult: 1.70, damageMult: 1.25, attackSpeedMult: 0.60,
+                   weakTo: ['wind'],     resists: ['earth'] },
+    harpy:       { name: 'Harpy',             sprite: 'harpy.png',         scale: 0.80, hpMult: 0.75, damageMult: 1.05, attackSpeedMult: 1.50,
+                   weakTo: ['earth'],    resists: ['wind'] },
 
     // ---- mid-late: named leaders and casters (stage ~40-85) ----
-    trollTotem:  { name: 'Troll Totem-Master',sprite: 'troll_totem.png',   scale: 1.20, hpMult: 1.10, damageMult: 1.40, attackSpeedMult: 0.65 },
-    darkAcolyte: { name: 'Dark Acolyte',      sprite: 'dark_acolyte.png',  scale: 0.90, hpMult: 0.80, damageMult: 1.45, attackSpeedMult: 0.85 },
-    ogreBand:    { name: 'Ogre Bandmaster',   sprite: 'ogre_bandmaster.png', scale: 1.50, hpMult: 1.55, damageMult: 1.35, attackSpeedMult: 0.65 },
-    blackKnight: { name: 'Black Knight',      sprite: 'black_knight.png',  scale: 1.10, hpMult: 1.35, damageMult: 1.30, attackSpeedMult: 0.90 },
+    trollTotem:  { name: 'Troll Totem-Master',sprite: 'troll_totem.png',   scale: 1.20, hpMult: 1.10, damageMult: 1.40, attackSpeedMult: 0.65,
+                   weakTo: ['fire'],     resists: ['earth', 'dark'] },
+    darkAcolyte: { name: 'Dark Acolyte',      sprite: 'dark_acolyte.png',  scale: 0.90, hpMult: 0.80, damageMult: 1.45, attackSpeedMult: 0.85,
+                   weakTo: ['holy'],     resists: ['dark'] },
+    ogreBand:    { name: 'Ogre Bandmaster',   sprite: 'ogre_bandmaster.png', scale: 1.50, hpMult: 1.55, damageMult: 1.35, attackSpeedMult: 0.65,
+                   weakTo: ['wind'],     resists: ['earth'] },
+    blackKnight: { name: 'Black Knight',      sprite: 'black_knight.png',  scale: 1.10, hpMult: 1.35, damageMult: 1.30, attackSpeedMult: 0.90,
+                   weakTo: ['holy'],     resists: ['physical', 'dark'] },
 
     // ---- late: rare, dangerous, endless-tail threats (stage ~65+) ----
-    wraith:      { name: 'Wraith',            sprite: 'wraith.png',        scale: 0.85, hpMult: 0.70, damageMult: 1.20, attackSpeedMult: 1.30 },
-    stoneGolem:  { name: 'Stone Golem',       sprite: 'stone_golem.png',   scale: 1.55, hpMult: 2.20, damageMult: 1.10, attackSpeedMult: 0.45 },
-    ettin:       { name: 'Two-Headed Ettin',  sprite: 'ettin.png',         scale: 1.65, hpMult: 2.00, damageMult: 1.50, attackSpeedMult: 0.55 },
-    cyclops:     { name: 'Cyclops',           sprite: 'cyclops.png',       scale: 1.70, hpMult: 1.90, damageMult: 1.75, attackSpeedMult: 0.50 },
-    wyvern:      { name: 'Wyvern',            sprite: 'wyvern.png',        scale: 1.35, hpMult: 1.60, damageMult: 1.55, attackSpeedMult: 0.75 }
+    wraith:      { name: 'Wraith',            sprite: 'wraith.png',        scale: 0.85, hpMult: 0.70, damageMult: 1.20, attackSpeedMult: 1.30,
+                   weakTo: ['holy'],     resists: ['physical', 'dark'] },
+    stoneGolem:  { name: 'Stone Golem',       sprite: 'stone_golem.png',   scale: 1.55, hpMult: 2.20, damageMult: 1.10, attackSpeedMult: 0.45,
+                   weakTo: ['wind'],     resists: ['physical', 'earth', 'fire'] },
+    ettin:       { name: 'Two-Headed Ettin',  sprite: 'ettin.png',         scale: 1.65, hpMult: 2.00, damageMult: 1.50, attackSpeedMult: 0.55,
+                   weakTo: ['fire'],     resists: ['physical', 'earth'] },
+    cyclops:     { name: 'Cyclops',           sprite: 'cyclops.png',       scale: 1.70, hpMult: 1.90, damageMult: 1.75, attackSpeedMult: 0.50,
+                   weakTo: ['wind'],     resists: ['earth'] },
+    wyvern:      { name: 'Wyvern',            sprite: 'wyvern.png',        scale: 1.35, hpMult: 1.60, damageMult: 1.55, attackSpeedMult: 0.75,
+                   weakTo: ['earth'],    resists: ['fire', 'wind'] }
   };
 
   /* ---- Colour treatments ----------------------------------
@@ -104,7 +124,7 @@
     { base: 'goblinPack',   treatment: 'plain', minStage: 15,  maxStage: 45,   weight: 2 },
     { base: 'direWolf',     treatment: 'plain', minStage: 15,  maxStage: 48,   weight: 2 },
     { base: 'warhoundPack', treatment: 'plain', minStage: 18,  maxStage: 50,   weight: 2 },
-    { base: 'shaman',       treatment: 'plain', minStage: 8,   maxStage: 40,   weight: 2 },
+    { base: 'shaman',       treatment: 'plain', minStage: 11,  maxStage: 40,   weight: 2 },
     { base: 'orcBrute',     treatment: 'plain', minStage: 20,  maxStage: 55,   weight: 2 },
 
     // ---- stage 12-60ish: the heavy hitters proper ----
@@ -146,10 +166,10 @@
      Cycled by boss index, so boss 5 reuses boss 1's art with a
      treatment. Four distinct sprites cover an endless game.   */
   var bosses = [
-    { name: 'Gorruk the Gate-Breaker', sprite: 'boss_gorruk.png', scale: 1.6, hpMult: 1.00, damageMult: 1.00, attackSpeedMult: 0.65 },
-    { name: 'Maw of the Eastern Pass', sprite: 'boss_maw.png',    scale: 1.7, hpMult: 1.15, damageMult: 0.90, attackSpeedMult: 0.80 },
-    { name: 'The Unifier',             sprite: 'boss_unifier.png',scale: 1.5, hpMult: 0.90, damageMult: 1.30, attackSpeedMult: 0.70 },
-    { name: 'Crownwearer',             sprite: 'boss_crown.png',  scale: 1.8, hpMult: 1.25, damageMult: 1.15, attackSpeedMult: 0.60 }
+    { name: 'Gorruk the Gate-Breaker', sprite: 'boss_gorruk.png', scale: 1.6, hpMult: 1.00, damageMult: 1.00, attackSpeedMult: 0.65, weakTo: ['fire'], resists: ['earth', 'dark'] },
+    { name: 'Maw of the Eastern Pass', sprite: 'boss_maw.png',    scale: 1.7, hpMult: 1.15, damageMult: 0.90, attackSpeedMult: 0.80, weakTo: ['holy'], resists: ['fire', 'dark'] },
+    { name: 'The Unifier',             sprite: 'boss_unifier.png',scale: 1.5, hpMult: 0.90, damageMult: 1.30, attackSpeedMult: 0.70, weakTo: ['holy'], resists: ['dark', 'fire', 'wind'] },
+    { name: 'Crownwearer',             sprite: 'boss_crown.png',  scale: 1.8, hpMult: 1.25, damageMult: 1.15, attackSpeedMult: 0.60, weakTo: [],       resists: ['physical', 'holy', 'dark'] }
   ];
 
   var bossTreatmentCycle = ['plain', 'bloodfang', 'frost', 'elite', 'voidtouch'];
@@ -229,6 +249,13 @@
       name: name,
       stage: stage,
       isBoss: boss,
+
+      // Elemental tags. An attack carries ONE attribute, so at most
+      // one of these can ever apply to a given hit — resistances
+      // never stack. Early grunts have both lists empty on purpose
+      // (see config.attributes' note on leniency).
+      weakTo: art.weakTo || [],
+      resists: art.resists || [],
 
       // The baseTypes key this enemy came from ('direWolf', 'goblin',
       // ...), or null for a boss. Kill counts are tracked against
