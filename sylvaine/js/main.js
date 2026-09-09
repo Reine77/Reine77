@@ -85,7 +85,12 @@
         '-- Phase 3: runes --',
         'S.runes()                 -> the whole tree: status + why-not',
         "S.buyRune('arcane_1')     -> attempt a real purchase",
-        'S.giveGold(n)             -> debug: hand her gold'
+        'S.giveGold(n)             -> debug: hand her gold',
+        '',
+        '-- hunting grounds --',
+        'S.farmStage(30)           -> park on a cleared, non-boss stage',
+        'S.autoAdvance()           -> release it, resume climbing',
+        'S.killCounts()            -> kills per creature type'
       ].join('\n'));
     },
 
@@ -237,6 +242,28 @@
       var result = Runes.purchase(state, id);
       console.log(result ? 'bought "' + id + '"' : 'purchase failed — see the log line above for why');
       return result;
+    },
+
+    // Hunting grounds — the same public actions the UI buttons use.
+    farmStage: function (stage) {
+      return Game.setFarmTarget(state, stage);
+    },
+
+    autoAdvance: function () {
+      var released = Game.clearFarmTarget(state);
+      if (!released) console.log('already climbing — no hunting ground was set');
+      return released;
+    },
+
+    // What she has killed, by creature type. This is what the future
+    // pet/companion unlocks will read ("100 dire wolves").
+    killCounts: function () {
+      var byType = state.totals.killsByType;
+      var rows = Object.keys(byType)
+        .sort(function (a, b) { return byType[b] - byType[a]; })
+        .reduce(function (acc, key) { acc[key] = byType[key]; return acc; }, {});
+      console.table(rows);
+      return byType;
     },
 
     giveGold: function (amount) {

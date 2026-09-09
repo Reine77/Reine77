@@ -31,6 +31,9 @@ Debug commands available on `window.S`:
 | `S.runes()` | the whole tree: owned / affordable / locked-and-why, one row per node |
 | `S.buyRune('arcane_1')` | attempt a real purchase (spends real gold) |
 | `S.giveGold(5000)` | debug: hand her gold, for testing runes without waiting on the economy |
+| `S.farmStage(30)` | park on a cleared, non-boss stage and farm it indefinitely |
+| `S.autoAdvance()` | release the hunting ground, resume climbing |
+| `S.killCounts()` | kills per creature type (what pet/companion unlocks will read) |
 
 **In Node (faster for balance work):**
 
@@ -275,6 +278,49 @@ other two channels; the numbers here are a baseline, not a final balance.
   classes all land exactly as designed; re-measured the hero/enemy panel
   alignment from Phase 4 to confirm the larger portraits didn't reopen that
   bug (still ~2px, unchanged).
+
+## Hunting grounds (player-chosen farming)
+
+Added after the Phase 5 review, ahead of the companion/pet phases that need
+it. The player can lock onto any **cleared, non-boss** stage and farm it
+forever instead of auto-climbing — the groundwork for "wolf pups only drop
+from dire wolves, which only spawn in stages 30-50".
+
+**The cost is progression.** XP *and* gold scale down the further a stage is
+behind your frontier (highest normal stage cleared): full value at the
+frontier, falling linearly to **exactly zero** `config.xp.relevanceWindow`
+stages back (default 10). Farming old content earns you drops and kill
+counts, and nothing else. That's the trade the choice is meant to be about —
+you pause your climb to hunt something specific.
+
+Two things that are deliberately *not* symmetrical here:
+
+- **Item drops have no falloff.** Item power rolls from the stage's own
+  budget curve, so a stage-5 drop is junk to a stage-50 hero automatically.
+  Drops self-limit; currencies don't, so only currencies needed a rule.
+- **Gold needed the brake too, which wasn't obvious.** The first draft only
+  slowed XP, reasoning that per-kill gold already shrinks exponentially with
+  stage. Measuring it disproved that: kill *rate* rises as content
+  trivialises (capped only by `spawnDelay`, ~30 kills/min), which more than
+  cancels the smaller reward. 40 minutes parked on stage 5 out-earned 25
+  minutes of real climbing 4:1 — enough to buy the entire 9,900g rune tree
+  without fighting anything dangerous. Gold now uses the same falloff.
+
+Guard rails:
+
+- Boss stages can't be farmed (they're one-off fights).
+- You can't pick a stage you haven't cleared.
+- If a hunting ground turns out to be lethal, the lock **releases itself**
+  rather than looping her into the same death forever, and says so in the log.
+- The automatic retreat-farm loop is untouched: when a boss blocks her she
+  farms her frontier, which is worth full XP, so she can still level through
+  the wall. Breaking that would break the whole difficulty gate —
+  `tools/checks.mjs` check 28 exists specifically to catch it.
+
+Kill counts are now tracked per creature type (`totals.killsByType`), keyed
+on the base type rather than the display name — so "Bloodfang Goblin",
+"Elite Goblin" and "Goblin" all count toward the same bucket, which is what
+a future "kill 100 of these" requirement needs.
 
 ## Phase plan
 

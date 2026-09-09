@@ -55,7 +55,20 @@
       // Progression bookkeeping for the retreat rule.
       highestNormalCleared: 0, // last NORMAL stage she beat
       blockedStage: null,      // boss stage she could not beat
-      farming: false,          // true = looping a cleared stage
+      farming: false,          // true = looping a cleared stage AUTOMATICALLY
+                               // (she was blocked), not by player choice
+
+      // Player-chosen hunting ground. null = climb normally.
+      // A number = stay on that stage forever, killing it over and
+      // over, until the player releases it. This is deliberately a
+      // SEPARATE field from `farming` above: one is the game
+      // deciding she can't proceed, the other is the player
+      // deciding they want something farmable that only appears in
+      // a particular stage band. They behave differently (the
+      // automatic one keeps re-testing the boss that blocked her;
+      // the manual one never does) and can't be collapsed into one
+      // flag without losing that distinction.
+      farmTarget: null,
 
       hero: Stats.makeHero(),
       enemy: null,
@@ -83,7 +96,18 @@
         itemDrops: 0,
         itemsEquipped: 0,
         itemsSold: 0,
-        epicsFound: 0
+        epicsFound: 0,
+
+        // baseTypes key -> how many of that creature she has killed,
+        // ever, across the whole run. Grows keys as new creatures
+        // are first met rather than being pre-filled, since the
+        // roster is data and this file shouldn't have to know it.
+        //
+        // This is the hook the companion/pet phases read: "100 dire
+        // wolves killed" is `killsByType.direWolf >= 100`. Tracking
+        // it from now on means those phases don't start from zero
+        // history on an existing save.
+        killsByType: {}
       },
 
       // Event hooks. Later phases subscribe to these to draw
@@ -306,19 +330,48 @@
 
     state.totals.kills++;
     if (enemy.isBoss) state.totals.bossKills++;
+    if (enemy.baseType) {
+      var byType = state.totals.killsByType;
+      byType[enemy.baseType] = (byType[enemy.baseType] || 0) + 1;
+    }
 
-    hero.gold += enemy.goldReward;
-    state.totals.goldEarned += enemy.goldReward;
-    gainXp(state, enemy.xpReward);
+    // BOTH progression currencies fall off on outleveled content.
+    //
+    // The first draft of this only braked XP, on the reasoning that
+    // gold is self-limiting because per-kill gold follows the same
+    // exponential stage curve. Measuring it proved that wrong: kill
+    // RATE rises as content trivialises (capped only by spawnDelay,
+    // ~30 kills/min), and that more than cancels the smaller reward.
+    // 40 minutes parked on stage 5 out-earned 25 minutes of real
+    // climbing by 4x — enough to buy the entire rune tree without
+    // ever fighting anything dangerous.
+    //
+    // Item drops deliberately have NO such rule: item power is rolled
+    // from the stage's own budget curve, so a stage-5 drop is junk to
+    // a stage-50 hero on its own, with nothing to enforce. That's the
+    // difference — drops self-limit, currencies don't.
+    var relevance = xpRelevance(state, enemy.stage);
+
+    var goldGain = Math.floor(enemy.goldReward * relevance);
+    hero.gold += goldGain;
+    state.totals.goldEarned += goldGain;
+
+    var xpGain = Math.floor(enemy.xpReward * relevance);
+    gainXp(state, xpGain);
 
     // Partial heal. Below 100% this is the attrition that makes
     // long stage runs risky rather than free.
     var heal = s.maxHp * CONFIG.combat.healOnKill;
     hero.hp = Math.min(s.maxHp, hero.hp + heal);
 
+    var rewardNote = relevance >= 1
+      ? '+' + xpGain + ' XP, +' + goldGain + ' gold'
+      : '+' + xpGain + ' XP, +' + goldGain + ' gold (' +
+        Math.round(relevance * 100) + '% — outleveled)';
+
     state.log.push(enemy.isBoss ? 'bosskill' : 'kill',
       (enemy.isBoss ? '*** ' : '') + enemy.name + ' falls. ' +
-      '+' + enemy.xpReward + ' XP, +' + enemy.goldReward + ' gold. ' +
+      rewardNote + '. ' +
       '(HP ' + Math.round(hero.hp) + '/' + Math.round(s.maxHp) + ')', state.time);
 
     emit(state, 'enemyKilled', enemy);
@@ -335,6 +388,13 @@
   }
 
   function advance(state, enemy) {
+    // A player-chosen hunting ground outranks everything else: she
+    // stays on this stage, does not climb, and does NOT re-test a
+    // boss that previously blocked her. Re-testing would yank her
+    // out of the stage band the player deliberately parked her in,
+    // which is the one thing this feature exists to prevent.
+    if (state.farmTarget !== null) return;
+
     if (state.farming) {
       // She is farming a cleared stage. Killing it again does not
       // advance her — but it does earn XP and gold, which is the
@@ -360,8 +420,102 @@
     return canWin(state, probe);
   }
 
+  /* ---- How much XP is this kill actually worth? --------------
+     1.0 at (or above) her frontier — the highest normal stage she
+     has cleared — falling linearly to exactly 0 once the stage is
+     `relevanceWindow` stages behind it.
+
+     Note this keys off the STAGE, not off her level. Stage is the
+     thing the player picks and the thing content is gated on, so
+     "have I outgrown this content" is the honest question. Keying
+     off level would drift out of sync the moment gear or runes let
+     her punch above her level.
+
+     The automatic retreat-farm loop is deliberately unaffected:
+     when a boss blocks her at stage 20, her frontier is 19 and she
+     farms 19 — same stage, so full XP, so she can still level her
+     way through the wall. That loop breaking would break the whole
+     difficulty gate.                                              */
+  function xpRelevance(state, stage) {
+    var window = CONFIG.xp.relevanceWindow;
+    var frontier = Math.max(1, state.highestNormalCleared);
+    if (stage >= frontier) return 1;
+    var mult = (stage - (frontier - window)) / window;
+    return Math.max(0, Math.min(1, mult));
+  }
+
+  /* ---- Choosing a hunting ground -----------------------------
+     Validation lives here, next to the rules it protects, and
+     returns a reason string rather than just false — the UI shows
+     that reason directly, the same way runes.js's canPurchase
+     explains itself instead of silently refusing.               */
+  function canFarmStage(state, stage) {
+    if (typeof stage !== 'number' || !isFinite(stage) || Math.floor(stage) !== stage) {
+      return { ok: false, reason: 'pick a whole stage number' };
+    }
+    if (stage < 1) return { ok: false, reason: 'stages start at 1' };
+    if (Enemies.isBossStage(stage)) {
+      return { ok: false, reason: 'stage ' + stage + ' is a boss stage — bosses are ' +
+        'one-off fights, not farmable' };
+    }
+    if (stage > state.highestNormalCleared) {
+      return { ok: false, reason: 'you have only cleared up to stage ' +
+        state.highestNormalCleared };
+    }
+    return { ok: true, reason: null };
+  }
+
+  function setFarmTarget(state, stage) {
+    var check = canFarmStage(state, stage);
+    if (!check.ok) {
+      state.log.push('warn', 'Cannot farm stage ' + stage + ': ' + check.reason, state.time);
+      return false;
+    }
+
+    state.farmTarget = stage;
+    state.stage = stage;
+
+    // Abandon whatever fight is in progress and re-spawn at the new
+    // stage, so the change is visible immediately instead of only
+    // taking effect after the current enemy happens to die.
+    state.enemy = null;
+    state.phase = 'spawning';
+    state.phaseTimer = CONFIG.combat.spawnDelay;
+
+    var relevance = xpRelevance(state, stage);
+    state.log.push('farm', 'Hunting ground set: stage ' + stage + '. ' +
+      (relevance > 0
+        ? 'XP from here is worth ' + Math.round(relevance * 100) + '% of normal.'
+        : 'This stage is too far behind you to give any XP — gold, drops and ' +
+          'kill counts only.'), state.time);
+    emit(state, 'farmTargetChanged', stage);
+    return true;
+  }
+
+  function clearFarmTarget(state) {
+    if (state.farmTarget === null) return false;
+    state.farmTarget = null;
+
+    // Where does she go now? Back to whatever she was doing before
+    // the player parked her: still blocked -> resume the automatic
+    // farm loop at her frontier; otherwise resume climbing from it.
+    state.stage = (state.farming && state.blockedStage !== null)
+      ? Math.max(1, state.highestNormalCleared)
+      : state.highestNormalCleared + 1;
+
+    state.enemy = null;
+    state.phase = 'spawning';
+    state.phaseTimer = CONFIG.combat.spawnDelay;
+
+    state.log.push('farm', 'Hunting ground released. Climbing again from stage ' +
+      state.stage + '.', state.time);
+    emit(state, 'farmTargetChanged', null);
+    return true;
+  }
+
   function gainXp(state, amount) {
     var hero = state.hero;
+    if (amount <= 0) return; // outleveled content grants nothing
     hero.xp += amount;
 
     // `while`, not `if`: one big boss can grant several levels.
@@ -398,6 +552,19 @@
 
     state.totals.retreats++;
 
+    // If the player had parked her on a hunting ground and it turned
+    // out to be lethal, release the lock. Keeping it would put her
+    // straight back on the stage that just killed her, forever, with
+    // no progress and no explanation — an invisible infinite loop is
+    // far worse than overriding the player's choice and saying so.
+    if (state.farmTarget !== null) {
+      var lost = state.farmTarget;
+      state.farmTarget = null;
+      state.log.push('warn', 'Stage ' + lost + ' is too dangerous to farm right now — ' +
+        'hunting ground released.', state.time);
+      emit(state, 'farmTargetChanged', null);
+    }
+
     // Remember what to come back for. If a normal stage beat her,
     // the thing to retry is that normal stage.
     state.blockedStage = state.stage;
@@ -426,6 +593,12 @@
     // exported for inspection / later phases / tests
     heroDps: heroDps,
     canWin: canWin,
-    gainXp: gainXp
+    gainXp: gainXp,
+
+    // Hunting grounds (player-chosen farming)
+    canFarmStage: canFarmStage,
+    setFarmTarget: setFarmTarget,
+    clearFarmTarget: clearFarmTarget,
+    xpRelevance: xpRelevance
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

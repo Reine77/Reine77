@@ -195,7 +195,7 @@
   function spawn(stage, rng) {
     var C = CONFIG;
     var boss = isBossStage(stage);
-    var art, name, treatment;
+    var art, name, treatment, baseType;
 
     if (boss) {
       var bossIndex = Math.floor(stage / C.boss.everyNStages) - 1;
@@ -203,11 +203,13 @@
       var cycle = Math.floor(bossIndex / bosses.length);
       treatment = treatments[bossTreatmentCycle[cycle % bossTreatmentCycle.length]];
       name = art.name + (treatment.suffix ? ' (' + treatment.suffix + ')' : '');
+      baseType = null; // bosses are counted separately (totals.bossKills)
     } else {
       var variant = pickWeighted(eligibleVariants(stage), rng);
       art = baseTypes[variant.base];
       treatment = treatments[variant.treatment];
       name = treatment.suffix ? treatment.suffix + ' ' + art.name : art.name;
+      baseType = variant.base;
     }
 
     var hp     = curve(C.enemy.hp, stage)     * art.hpMult;
@@ -227,6 +229,15 @@
       name: name,
       stage: stage,
       isBoss: boss,
+
+      // The baseTypes key this enemy came from ('direWolf', 'goblin',
+      // ...), or null for a boss. Kill counts are tracked against
+      // THIS rather than `name`, because `name` carries the palette
+      // tier prefix — "Bloodfang Goblin" and "Elite Goblin" and
+      // "Goblin" are all the same creature for the purposes of a
+      // future "kill 100 of these" requirement, and would otherwise
+      // land in three separate buckets.
+      baseType: baseType,
 
       // combat numbers
       maxHp: Math.round(hp),

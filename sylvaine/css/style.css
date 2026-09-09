@@ -354,6 +354,48 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 #gearLine { margin-top: .5rem; font-size: .8rem; color: var(--text-dim); }
 #gearLine .item-name { color: var(--gold); }
 
+/* ---- hunting ground picker --------------------------------- */
+#farmStatus { font-size: .85rem; margin-bottom: .5rem; }
+#farmStatus .locked { color: var(--boss); }
+#farmStatus .climbing { color: var(--hero); }
+
+#farmControls {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  font-size: .8rem;
+}
+#farmControls label { color: var(--text-dim); }
+#farmInput {
+  width: 5.5em;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .25rem .4rem;
+  font: inherit;
+}
+#farmControls button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .25rem .6rem;
+  font: inherit;
+  cursor: pointer;
+}
+#farmControls button:disabled { opacity: .4; cursor: not-allowed; }
+#farmControls button:not(:disabled):hover { border-color: var(--gold); }
+
+#farmHint {
+  margin-top: .45rem;
+  font-size: .72rem;
+  color: var(--text-dim);
+  min-height: 1.4em; /* reserved so the panel doesn't jump when the hint changes */
+}
+#farmHint.warn { color: var(--enemy); }
+
 /* ---- rune buy list -------------------------------------------
    Deliberately basic — the real clickable tree is Phase 6. This
    is a flat list of buttons so runes don't require the console. */

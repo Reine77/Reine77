@@ -107,6 +107,23 @@
       </div>
     </section>
 
+    <!-- Hunting ground: the player picks a cleared, non-boss stage
+         to farm indefinitely. Exists so future systems can gate
+         things on a stage band ("dire wolves only spawn in 30-50"),
+         and priced so it costs progression — see the XP/gold
+         relevance rule in game.js. -->
+    <div class="panel">
+      <h2>Hunting ground</h2>
+      <div id="farmStatus"></div>
+      <div id="farmControls">
+        <label for="farmInput">Farm stage</label>
+        <input type="number" id="farmInput" min="1" step="1" value="1">
+        <button id="farmSet">Hunt here</button>
+        <button id="farmClear">Resume climbing</button>
+      </div>
+      <div id="farmHint"></div>
+    </div>
+
     <div class="panel">
       <h2>Hero</h2>
       <div id="gearLine"></div>

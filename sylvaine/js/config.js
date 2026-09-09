@@ -54,7 +54,25 @@
        hero's level growth slows down as enemies speed up.     */
     xp: {
       base:   50,
-      growth: 1.20
+      growth: 1.20,
+
+      // How far BELOW your frontier (highest normal stage cleared)
+      // an enemy still gives XP worth having. At the frontier it's
+      // full XP; `relevanceWindow` stages below it, XP hits exactly
+      // zero; in between it scales linearly.
+      //
+      // WHY this exists: the player can now lock onto a specific
+      // stage and farm it forever (see game.js's farmTarget) —
+      // needed so future systems can say "wolf pups only drop from
+      // dire wolves, which only spawn in stages 30-50". Without a
+      // falloff, parking on a cleared stage would ALSO be a free
+      // levelling treadmill, and the optimal play would be to grind
+      // trivial enemies you can one-shot instead of climbing.
+      //
+      // With it, farming costs you progression: you keep the gold,
+      // the drops and the kill counts, but your level stops moving.
+      // That's the trade the choice is supposed to be about.
+      relevanceWindow: 10
     },
 
     /* ---- Enemy scaling per stage ---------------------------

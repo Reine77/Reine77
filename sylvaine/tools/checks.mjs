@@ -405,6 +405,131 @@ console.log('\nPhase 1 checks\n');
     state.hero.runes.length + '/' + Runes.NODES.length);
 }
 
+/* --- 25. hunting grounds: validation ---------------------- */
+{
+  const state = Game.createState({ seed: 30, echo: false });
+  for (let i = 0; i < 60 * 60 * 20; i++) Game.step(state, 1 / 60); // build a frontier
+  const frontier = state.highestNormalCleared;
+  check('a 20-minute run cleared enough stages to test farming', frontier > 12,
+    'frontier ' + frontier);
+
+  check('a boss stage cannot be farmed', Game.canFarmStage(state, 10).ok === false);
+  check('an uncleared stage cannot be farmed',
+    Game.canFarmStage(state, frontier + 5).ok === false);
+  check('stage 0 / negatives are refused', Game.canFarmStage(state, 0).ok === false);
+  check('a fractional stage is refused', Game.canFarmStage(state, 3.5).ok === false);
+  check('a cleared non-boss stage is allowed', Game.canFarmStage(state, 5).ok === true);
+}
+
+/* --- 26. hunting grounds: she actually stays put ---------- */
+{
+  const state = Game.createState({ seed: 31, echo: false });
+  for (let i = 0; i < 60 * 60 * 20; i++) Game.step(state, 1 / 60);
+
+  Game.setFarmTarget(state, 5);
+  const stagesSeen = new Set();
+  for (let i = 0; i < 60 * 60 * 20; i++) {
+    Game.step(state, 1 / 60);
+    if (state.enemy) stagesSeen.add(state.enemy.stage);
+  }
+  check('while hunting, she fights ONLY the chosen stage',
+    stagesSeen.size === 1 && stagesSeen.has(5),
+    'saw stages: ' + [...stagesSeen].join(','));
+  check('she never advances past the hunting ground', state.stage === 5,
+    'stage ' + state.stage);
+}
+
+/* --- 27. outleveled content grants no XP or gold ---------- */
+{
+  const state = Game.createState({ seed: 32, echo: false });
+  for (let i = 0; i < 60 * 60 * 20; i++) Game.step(state, 1 / 60);
+
+  const frontier = state.highestNormalCleared;
+  check('deep-past content has zero XP relevance',
+    Game.xpRelevance(state, Math.max(1, frontier - CONFIG.xp.relevanceWindow)) === 0);
+  check('the frontier itself is worth full XP', Game.xpRelevance(state, frontier) === 1);
+  check('halfway into the window is worth partial XP', (() => {
+    const mid = frontier - Math.floor(CONFIG.xp.relevanceWindow / 2);
+    const r = Game.xpRelevance(state, mid);
+    return r > 0 && r < 1;
+  })());
+
+  Game.setFarmTarget(state, 1); // as outleveled as it gets
+  const before = { level: state.hero.level, xp: state.hero.xp, gold: state.hero.gold,
+                   kills: state.totals.kills };
+  for (let i = 0; i < 60 * 60 * 30; i++) Game.step(state, 1 / 60); // 30 min
+
+  check('levelling completely stops while farming outleveled content',
+    state.hero.level === before.level, before.level + ' -> ' + state.hero.level);
+  check('no XP at all is banked either',
+    state.hero.xp === before.xp, before.xp + ' -> ' + state.hero.xp);
+  check('she is still killing things (so the check above is meaningful)',
+    state.totals.kills > before.kills + 100,
+    '+' + (state.totals.kills - before.kills) + ' kills');
+  // Gold can still trickle in from auto-selling junk drops — that is
+  // intended (item value self-limits via the stage's power budget),
+  // so this asserts the trickle is small, not that it is zero.
+  const goldGained = state.hero.gold - before.gold;
+  const goldPerKill = goldGained / (state.totals.kills - before.kills);
+  check('gold from outleveled farming is a trickle, not an income',
+    goldPerKill < 2, goldPerKill.toFixed(2) + ' gold/kill');
+}
+
+/* --- 28. the automatic retreat-farm loop still levels ------
+     The XP falloff must NOT break the difficulty gate: when a boss
+     blocks her, she farms her frontier, which is worth full XP, so
+     she can still level her way through the wall.                */
+{
+  const state = Game.createState({ seed: 33, echo: false });
+  for (let i = 0; i < 60 * 60 * 10; i++) Game.step(state, 1 / 60);
+  const lvlBefore = state.hero.level;
+  for (let i = 0; i < 60 * 60 * 25; i++) Game.step(state, 1 / 60);
+  check('she still levels up over a long unattended run (gate intact)',
+    state.hero.level > lvlBefore, lvlBefore + ' -> ' + state.hero.level);
+  check('and still makes stage progress', state.highestNormalCleared > 5,
+    'frontier ' + state.highestNormalCleared);
+}
+
+/* --- 29. release resumes normal play ---------------------- */
+{
+  const state = Game.createState({ seed: 34, echo: false });
+  for (let i = 0; i < 60 * 60 * 20; i++) Game.step(state, 1 / 60);
+  Game.setFarmTarget(state, 3);
+  for (let i = 0; i < 60 * 60 * 5; i++) Game.step(state, 1 / 60);
+  check('farmTarget is set', state.farmTarget === 3);
+
+  Game.clearFarmTarget(state);
+  check('farmTarget clears', state.farmTarget === null);
+  const stageAtRelease = state.stage;
+  for (let i = 0; i < 60 * 60 * 15; i++) Game.step(state, 1 / 60);
+  check('she climbs again after release', state.stage > stageAtRelease,
+    stageAtRelease + ' -> ' + state.stage);
+}
+
+/* --- 30. kill counts are tracked per creature type -------- */
+{
+  const state = Game.createState({ seed: 35, echo: false });
+  for (let i = 0; i < 60 * 60 * 20; i++) Game.step(state, 1 / 60);
+  const byType = state.totals.killsByType;
+  const keys = Object.keys(byType);
+
+  check('kills are bucketed by creature type', keys.length > 0, keys.join(','));
+  check('every tracked key is a real base type',
+    keys.every(k => !!Enemies.baseTypes[k]), keys.join(','));
+
+  const summed = keys.reduce((n, k) => n + byType[k], 0);
+  check('per-type counts sum to total kills minus bosses',
+    summed === state.totals.kills - state.totals.bossKills,
+    summed + ' vs ' + (state.totals.kills - state.totals.bossKills));
+
+  // Palette tiers of one creature must NOT split into separate
+  // buckets — "kill 100 goblins" has to count Bloodfang/Elite ones.
+  const goblinish = Enemies.variants.filter(v => v.base === 'goblin');
+  check('one creature with several palette tiers still has ONE bucket',
+    goblinish.length > 1 && !keys.some(k => k.includes('bloodfang')),
+    goblinish.length + ' goblin variants tracked under: goblin');
+}
+
 console.log('\n' + passed + ' passed, ' + failures.length + ' failed');
 if (failures.length) {
   console.log('failed: ' + failures.join(', '));

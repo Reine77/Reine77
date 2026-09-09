@@ -111,6 +111,12 @@
       statSpell:   document.getElementById('statSpell'),
       gearLine:    document.getElementById('gearLine'),
 
+      farmStatus:  document.getElementById('farmStatus'),
+      farmInput:   document.getElementById('farmInput'),
+      farmSet:     document.getElementById('farmSet'),
+      farmClear:   document.getElementById('farmClear'),
+      farmHint:    document.getElementById('farmHint'),
+
       runeList:    document.getElementById('runeList'),
       logList:     document.getElementById('logList')
     };
@@ -119,6 +125,7 @@
     var runeRows = {};      // id -> { row, button, status } built once, updated in place
 
     buildRuneList();
+    wireFarmControls();
     setupImageFallback(el.heroSprite, el.heroPortrait);
     setupImageFallback(el.enemySprite, el.enemyPortrait);
     setupImageFallback(el.swordTrail, null); // trail has no fallback text to reveal
@@ -301,6 +308,11 @@
           // action a console command already uses. Every rule about
           // whether this is ALLOWED lives in runes.js, not here.
           Runes.purchase(state, node.id);
+          // Re-render now, not on the next frame — buying a rune
+          // changes what else is affordable, and this has to stay
+          // correct even while the loop is paused. Same reasoning as
+          // wireFarmControls above.
+          update();
         });
 
         row.appendChild(branch);
@@ -312,6 +324,90 @@
 
         runeRows[node.id] = { row: row, button: button, status: status };
       });
+    }
+
+    /* =========================================================
+       HUNTING GROUND CONTROLS
+       Same division of labour as the rune buttons: the click just
+       forwards to Game's public action, and every rule about
+       whether it's allowed (boss stage? not cleared yet?) lives in
+       game.js's canFarmStage, not here.
+       ========================================================= */
+    function wireFarmControls() {
+      // Each handler re-renders immediately rather than waiting for
+      // the next animation frame. Two reasons: the button that was
+      // just clicked should reflect its new enabled/disabled state
+      // right away, and — the real bug this prevents — if the loop
+      // is paused (S.pause()) no frames are running at all, so
+      // without this the panel would freeze in a stale state and the
+      // buttons would stop matching reality.
+      el.farmSet.addEventListener('click', function () {
+        Game.setFarmTarget(state, parseInt(el.farmInput.value, 10));
+        update();
+      });
+      el.farmClear.addEventListener('click', function () {
+        Game.clearFarmTarget(state);
+        update();
+      });
+      // Live feedback while typing, so the XP cost of a choice is
+      // visible BEFORE committing to it rather than after.
+      el.farmInput.addEventListener('input', updateFarmPanel);
+    }
+
+    // Cached last-written strings. This runs every frame like the
+    // rest of update(), but the panel's contents only change on a
+    // stage change or a keystroke — writing innerHTML 60x/second for
+    // an unchanged string is exactly the waste this file's header
+    // says it avoids, so compare first and write only on a real change.
+    var lastFarmStatus = null;
+    var lastFarmHint = null;
+
+    function updateFarmPanel() {
+      var frontier = state.highestNormalCleared;
+
+      var statusHtml;
+      if (state.farmTarget !== null) {
+        statusHtml = '<span class="locked">Hunting stage ' + state.farmTarget +
+          '</span> — not advancing.';
+      } else if (state.farming && state.blockedStage !== null) {
+        statusHtml = '<span class="climbing">Auto-farming stage ' + state.stage +
+          '</span> — blocked at stage ' + state.blockedStage + '.';
+      } else {
+        statusHtml = '<span class="climbing">Climbing</span> — stage ' + state.stage + '.';
+      }
+      if (statusHtml !== lastFarmStatus) {
+        el.farmStatus.innerHTML = statusHtml;
+        lastFarmStatus = statusHtml;
+      }
+
+      el.farmClear.disabled = state.farmTarget === null;
+
+      var hint, hintClass = '';
+      if (frontier < 1) {
+        el.farmSet.disabled = true;
+        hint = 'Clear a stage first — you can only hunt ground you have already taken.';
+      } else {
+        var wanted = parseInt(el.farmInput.value, 10);
+        var check = Game.canFarmStage(state, wanted);
+        el.farmSet.disabled = !check.ok;
+
+        if (!check.ok) {
+          hintClass = 'warn';
+          hint = check.reason + '. Cleared: stages 1-' + frontier +
+            ' (excluding boss stages).';
+        } else {
+          var pct = Math.round(Game.xpRelevance(state, wanted) * 100);
+          hint = pct > 0
+            ? 'Stage ' + wanted + ' pays ' + pct + '% XP and gold. Drops and kill counts are unaffected.'
+            : 'Stage ' + wanted + ' is far enough behind you to pay NO XP or gold — ' +
+              'drops and kill counts only. Levelling stops while you hunt here.';
+        }
+      }
+      if (hint !== lastFarmHint) {
+        el.farmHint.textContent = hint;
+        el.farmHint.className = hintClass;
+        lastFarmHint = hint;
+      }
     }
 
     function updateRuneList(hero) {
@@ -423,6 +519,7 @@
         (eq.weapon ? eq.weapon.name : 'none') + '</span> &nbsp; Armor: <span class="item-name">' +
         (eq.armor ? eq.armor.name : 'none') + '</span>';
 
+      updateFarmPanel();
       updateRuneList(hero);
       updateLog();
     }
