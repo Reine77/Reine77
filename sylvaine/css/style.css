@@ -605,12 +605,32 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
    #runeTreeWrap scrolls horizontally rather than shrinking the
    tree to fit — 14 positioned nodes get cramped and overlap if
    squeezed into a narrow panel, and an overlapping tree is worse
-   than one that scrolls. */
-#runeTreeWrap { overflow-x: auto; }
+   than one that scrolls.
+
+   `overflow-y: hidden` here is NOT optional/redundant — leaving it
+   at the default `visible` while `overflow-x: auto` is set makes
+   the browser silently force overflow-y to `auto` too (an axis
+   can't stay fully visible once its sibling axis is clipped/
+   scrollable, per the CSS overflow spec), which grew a SECOND,
+   independent vertical scrollbar here on top of the one the
+   window's own `.window-body` already has. Vertical scrolling for
+   this content is `.window-body`'s job alone; this wrapper only
+   ever needs to scroll horizontally. */
+#runeTreeWrap { overflow-x: auto; overflow-y: hidden; }
 #runeTree {
   position: relative;
   min-width: 640px;
-  min-height: 440px;
+  /* The lowest nodes (phys_6/magic_6 at y:86%, ~150px tall including
+     their button) render below #runeTree's own bottom edge whenever
+     min-height is too small: `translate(-50%,-50%)` centers each
+     node ON its y% anchor point, so a node near the bottom sticks
+     out by (halfNodeHeight - (1 - 0.86) * minHeight) — that overhang
+     shrinks as minHeight grows, converging to 0 once minHeight is
+     large enough. Solved directly from three measured data points
+     (440px -> 15px clipped, 480px -> 9px, 520px -> 3px) rather than
+     guessed: ~76px half-node-height, so minHeight needs to clear
+     ~543px. 550px leaves a small margin above that. */
+  min-height: 550px;
 }
 #runeTreeLines {
   position: absolute;
