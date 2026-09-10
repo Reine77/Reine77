@@ -1401,8 +1401,8 @@ console.log('\nPhase 1 checks\n');
   check('only the matching rarity was removed', state.hero.inventory.length === 1 &&
     state.hero.inventory[0].id === rare.id);
 
-  check('auto-sell starts at the config default (common on, rest off)',
-    state.hero.autoSellRarities.common === true &&
+  check('auto-sell starts OFF for every rarity (a fresh hero needs her early commons)',
+    state.hero.autoSellRarities.common === false &&
     state.hero.autoSellRarities.rare === false &&
     state.hero.autoSellRarities.epic === false);
 

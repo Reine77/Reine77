@@ -894,11 +894,15 @@ of one at a time.
 
 The **drop roll** (does a kill drop anything, at what rarity) is unchanged
 — still pure RNG off the same table as before. What changed is what happens
-**after** a drop: `hero.autoSellRarities` (default `{ common: true, rare:
-false, epic: false }`, per the spec's "auto sell for lower rarity like
-common") decides whether a rarity resolves itself immediately — sold on the
-spot for gold, same as the old behaviour always did for everything — or
-lands in `hero.inventory` and waits.
+**after** a drop: `hero.autoSellRarities` decides whether a rarity resolves
+itself immediately — sold on the spot for gold, same as the old behaviour
+always did for everything — or lands in `hero.inventory` and waits. The
+option exists per the spec's "auto sell for lower rarity like common," but
+it **defaults to off for every rarity**, common included: a fresh hero has
+nothing equipped and common is the only thing dropping early on, so
+auto-selling it out of the gate would sell her starting gear before she
+ever saw it. "You can set auto sell" is an opt-in the player reaches for
+once they're swimming in commons, not something switched on for them.
 
 Waiting items get resolved by hand, through four new `items.js` functions
 that are all the game rules ever needed to add: `equipItem` (swaps in an
@@ -941,6 +945,11 @@ inventory-and-wait could have meant that gold silently stopped flowing in
 the harness's own measurement. Measured directly: **1.17×** (previously
 1.16×), unchanged within rounding — item-sell gold was never a significant
 fraction of the total next to kill rewards, so no rebalancing was needed.
+(Re-measured again after `autoSellDefault.common` flipped to `false` — see
+below — with the same result: **1.14×**, still well inside the target
+range. Auto-sell being off by default means slightly LESS gold flows in
+automatically now, not more, so this direction was always the safer one to
+re-check.)
 
 `tools/checks.mjs` grew from 176 to 211 assertions: every rarity always
 carries its base line, the exact percent-line count per rarity holds (not

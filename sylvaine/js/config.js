@@ -282,12 +282,18 @@
       // they drop (sold on the spot, no inventory slot spent) versus
       // which ones wait in the inventory for a manual equip/sell
       // decision. Per the spec: "you can set auto sell for lower
-      // rarity like common." This is only the STARTING policy —
-      // stats.js's makeHero() copies it onto hero.autoSellRarities,
-      // which items.js's setAutoSell can flip per-rarity at runtime,
-      // same "config is the default, hero owns the live value" split
-      // the elemental attributes already established.
-      autoSellDefault: { common: true, rare: false, epic: false },
+      // rarity like common" — the OPTION defaults to off, though: a
+      // fresh hero has nothing equipped yet, and common is the only
+      // thing dropping early, so auto-selling it by default would
+      // sell her starting gear out from under her before she ever
+      // sees it. Off-by-default, toggle-able any time via
+      // items.js's setAutoSell, is what actually matches "you CAN
+      // set it," not "it's set for you." This is only the STARTING
+      // policy — stats.js's makeHero() copies it onto
+      // hero.autoSellRarities, which setAutoSell can flip per-rarity
+      // at runtime, same "config is the default, hero owns the live
+      // value" split the elemental attributes already established.
+      autoSellDefault: { common: false, rare: false, epic: false },
 
       // Soft cap on how many items can sit in the inventory at once.
       // Without one, a long unattended run with auto-sell off would
