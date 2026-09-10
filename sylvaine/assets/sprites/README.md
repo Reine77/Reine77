@@ -11,49 +11,50 @@ image files in it, so right now everything is still showing placeholders.
 
 ## Hero
 
-`idle` and `hurt` are real 4-frame animations now; `attack` and `spell` are
-still single static images (see "Why attack/spell aren't animated yet"
-below). `js/render.js`'s `HERO_ANIM` is the one place that knows which
-states are multi-frame vs. single, so upgrading a single-frame state to a
-real animation later is a data change there, not a rewrite.
+Every state is a real 4-frame animation now. `js/render.js`'s `HERO_ANIM` is
+the one place that knows the frame count/timing/variants per state, so
+adding a 5th attack variant, say, is a data change there, not a rewrite.
 
 | file(s) | state | notes |
 | --- | --- | --- |
 | `sylvaine_idle_1.png` … `_4.png` | resting, LOOPS | the default; cycles continuously at 260ms/frame while nothing else is happening |
-| `sylvaine_attack.png` | mid-swing lunge | single frame, faces RIGHT, holds ~200ms then reverts to idle |
+| `sylvaine_attack1_1..4.png`, `attack2_1..4.png` | mid-swing lunge, plays ONCE | a NORMAL hit picks attack1 or attack2 at random (plain `Math.random()`, never the game's seeded RNG — pure presentation) |
+| `sylvaine_attack3_1..4.png` | crit swing, plays ONCE | reserved for crits specifically — a crit is never attack1/2, and attack1/2 never plays on a crit. `game.js`'s `heroAttack` event already carries `crit` on its payload for exactly this branch |
 | `sylvaine_hurt_1.png` … `_4.png` | pained recoil, plays ONCE | also reused for the boss-retreat beat, with a fade/dim; the 4th frame is a deliberately deeper flinch pose, not a misalignment — her feet sit ~18px higher than the other 3 frames on purpose |
-| `sylvaine_spell.png` | casting | single frame, rune above the palm, holds ~200ms then reverts to idle |
-| `sword_trail.png` | attack overlay | separate transparent layer, absolutely positioned, fades in/out with the attack |
+| `sylvaine_spell_1.png` … `_4.png` | casting, plays ONCE | rune/wind swirl above the palm |
+| `sword_trail.png` | attack overlay | separate transparent layer, absolutely positioned, fades in/out with the attack — no file dropped in yet, still shows nothing (see the graceful-degradation note above) |
 
-### Attack has 3 interchangeable variants (once its alpha is fixed — see below)
+### Canvas sizes are NOT uniform across states — measured, not assumed
 
-The intended design: `sylvaine_attack1_1..4.png` / `attack2_1..4.png` /
-`attack3_1..4.png` — three different 4-frame swing animations, one picked
-at random (plain `Math.random()`, not the game's seeded RNG — this is pure
-presentation) every time `heroAttack` fires. `js/render.js`'s `HERO_ANIM`
-already supports this shape (a state can list multiple "variants" and picks
-one at random) — it's just not wired to these three sets yet, because:
+Every hero `<img>` renders inside a fixed 150×190px box via CSS
+`object-fit: contain`, which scales each state's own frames to fit while
+preserving THEIR aspect ratio — so a state whose source canvas is a
+different shape renders at a different actual size inside that box, even
+though the box itself never changes. Measured directly rather than
+eyeballed:
 
-### Why attack/spell aren't animated yet — a real export problem, not a TODO
+| state | frame canvas | aspect | rendered size in the 150×190 box |
+| --- | --- | --- | --- |
+| idle / hurt | 627×627 | 1.00 (square) | 150 × 150 |
+| attack1 / attack2 | 669×587 | 1.14 | 150 × 131.6 |
+| attack3 (crit) | 627×627 | 1.00 (square) | 150 × 150 — matches idle exactly |
+| spell | 656×599 | 1.10 | 150 × 137 |
 
-Sheets for `attack1`/`attack2`/`attack3`/`magic` (spell) came back as flat
-**RGB with no alpha channel at all** — a near-white but not perfectly
-uniform background (measured: values ranging ~208–255, not a clean flat
-255,255,255) baked into the pixels, unlike `idle`/`hurt` which had real
-transparency. Shipping them as-is would flash a visible pale box behind her
-on every attack/cast — worse than today's single clean image, not better —
-so they were deliberately left OUT of this folder rather than committed
-looking broken. **To finish this: re-export those 4 sheets with real alpha**
-(same tool/settings that produced `idle`/`hurt` correctly), then slice each
-into 4 frames named `sylvaine_attack1_1.png` … `sylvaine_attack3_4.png` /
-`sylvaine_magic_1.png` … `_4.png`, drop them in here, and update
-`HERO_ANIM.attack`/`.spell` in `js/render.js` to list them — no other code
-changes needed, the frame-player is generic over "how many frames" already.
+So a normal attack or a spell cast renders very slightly shorter (~13-18px,
+~10%) than idle — noticeable if you look for it, but smaller than the ~40px
+gap that existed before this batch (the old single `sylvaine_spell.png` was
+a 765×1024 portrait canvas, rendering a full 190px tall against idle's
+150px). The crit swing (attack3) happens to land on exactly the same
+square aspect ratio idle/hurt use, so THAT transition has zero size jump.
+If this becomes worth chasing further, the fix is re-exporting attack1/2/
+spell on a square canvas to match idle/hurt/attack3 — not a code change.
 
-Feet were checked across the sheets that DO have real content either way,
-for what it's worth: idle/attack1/attack2/attack3/magic all land within 1-2
-of each other, which is why the code above already assumes they'll line up
-fine once the alpha issue is fixed.
+Feet were checked the same way as every other batch: within each sheet's
+own 4 frames, not just eyeballed. attack1 lands all 4 at the same y; attack2
+and spell each have one frame ~30px higher (a genuine mid-lunge foot-lift /
+casting-stance shift, not a misalignment); attack3's calm 4th frame sits
+~46px higher than its other 3, consistent with it being the most upright,
+least-crouched pose in that sheet.
 
 ## Enemies — 20 base types, one static image each
 

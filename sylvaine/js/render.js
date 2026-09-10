@@ -61,10 +61,6 @@
 
   var SPRITE_PATH = 'assets/sprites/';
 
-  // How long a SINGLE-FRAME hero state (still attack/spell — see
-  // HERO_ANIM's comment) holds before reverting to idle. Matches the
-  // spec's original "~200ms" pattern.
-  var HERO_STATE_MS = 200;
   var HIT_FLASH_MS = 80;   // enemy brightness spike duration
   var LUNGE_MS = 90;       // enemy attack-tell hold time
 
@@ -81,31 +77,27 @@
   // "4-frame animation" and "single static image" — a single-frame
   // variant just has nothing to step through, so the exact same
   // player code (playHeroFrames, below) handles both without a
-  // special case. `attack` having 3 variants is what "rng whichever
-  // attack1/2/3" turns into: setHeroSprite picks one at random each
-  // time, per the same "render code must never touch state.rng"
-  // rule the boss-token/canWin probes already established — this is
-  // pure presentation, not anything that should perturb a seeded run.
+  // special case.
   //
-  // attack/spell are still single-frame, not the 4-frame sheets they
-  // could be: those source sheets came back as flat RGB with no
-  // alpha channel at all (a near-white, not-quite-uniform background
-  // baked into the pixels), unlike idle/hurt which had real
-  // transparency. Shipping them as-is would flash a visible pale box
-  // behind her on every attack/cast — worse than today's single
-  // clean image — so they stay on the old files until re-exported
-  // with real alpha. See assets/sprites/README.md.
+  // `attack` is the one state with a real BRANCH, not just a flat
+  // random pool: `normalVariants` (attack1/attack2) is what "rng
+  // whichever attack1/2" turns into on an ordinary hit, but a CRIT
+  // always plays `critVariant` (attack3) — deterministically, not a
+  // 1-in-3 chance alongside the other two. setHeroSprite's crit
+  // check is what picks between them; see game.js's basicAttack,
+  // which already puts `crit` on the emitted event payload for
+  // exactly this reason. Every random pick anywhere in this file
+  // uses plain Math.random(), never state.rng — this is pure
+  // presentation, not anything that should perturb a seeded run.
   var HERO_ANIM = {
     idle: { variants: [frameSet('sylvaine_idle', 4)], loop: true, frameMs: 260 },
     hurt: { variants: [frameSet('sylvaine_hurt', 4)], loop: false, frameMs: 70 },
     attack: {
-      variants: [[SPRITE_PATH + 'sylvaine_attack.png']],
-      loop: false, frameMs: HERO_STATE_MS
+      normalVariants: [frameSet('sylvaine_attack1', 4), frameSet('sylvaine_attack2', 4)],
+      critVariant: frameSet('sylvaine_attack3', 4),
+      loop: false, frameMs: 70
     },
-    spell: {
-      variants: [[SPRITE_PATH + 'sylvaine_spell.png']],
-      loop: false, frameMs: HERO_STATE_MS
-    }
+    spell: { variants: [frameSet('sylvaine_spell', 4)], loop: false, frameMs: 70 }
   };
 
   function makeRenderer(state) {
@@ -350,11 +342,13 @@
          - heroFrameTimer: setInterval that steps through the
            CURRENTLY PLAYING variant's frames (idle loops forever;
            attack/hurt/spell play once and stop).
-         - heroRevertTimer: setTimeout that fires once a non-looping
-           animation's last frame has held for its frameMs, and
-           returns to idle. (A single-frame variant — today's
-           attack/spell — has no interval at all; this timer alone
-           is what "holds HERO_STATE_MS then reverts" for those.)
+         - heroRevertTimer: would hold a single-frame state for
+           frameMs before reverting — currently unused, since every
+           state is a real 4-frame animation now, but the player
+           keeps supporting a 1-frame variant (see the `else if`
+           below) because that's exactly the shape a future state
+           with no art yet would need, same as attack/spell used to
+           be. Kept rather than deleted for that reason.
        Both are real wall-clock timers, independent of game.step's
        dt, matching every other visual-only timer in this file
        (flashSwordTrail, hitFlashEnemy, lungeEnemy).
@@ -368,17 +362,24 @@
       if (heroRevertTimer) { clearTimeout(heroRevertTimer); heroRevertTimer = null; }
     }
 
-    function setHeroSprite(nextState) {
+    // `opts.crit` only matters for 'attack' — see HERO_ANIM's comment
+    // on why that state branches (critVariant is DETERMINISTIC on a
+    // crit, not one more option in the random pool).
+    function setHeroSprite(nextState, opts) {
       stopHeroTimers();
       heroState = nextState;
 
       var anim = HERO_ANIM[nextState];
-      // rng, not state.rng — this is presentation only (which of 3
-      // near-identical attack flourishes plays), never anything a
-      // seeded run's outcome should depend on.
-      var frames = anim.variants.length > 1
-        ? anim.variants[Math.floor(Math.random() * anim.variants.length)]
-        : anim.variants[0];
+      var pool;
+      if (anim.normalVariants) {
+        pool = (opts && opts.crit) ? [anim.critVariant] : anim.normalVariants;
+      } else {
+        pool = anim.variants;
+      }
+      // rng, not state.rng — this is presentation only (which of the
+      // near-identical flourishes plays), never anything a seeded
+      // run's outcome should depend on.
+      var frames = pool.length > 1 ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
 
       var frameIdx = 0;
       el.heroSprite.src = frames[frameIdx];
@@ -398,8 +399,9 @@
           el.heroSprite.src = frames[frameIdx];
         }, anim.frameMs);
       } else if (!anim.loop) {
-        // Single-frame, non-looping (today's attack/spell): hold for
-        // frameMs then revert, same as the original implementation.
+        // Single-frame, non-looping: hold for frameMs then revert.
+        // No state currently uses this branch (see the comment
+        // above the timer declarations), but the player supports it.
         heroRevertTimer = setTimeout(function () {
           setHeroSprite('idle');
         }, anim.frameMs);
@@ -504,8 +506,8 @@
        game.js specifically so later phases could hook them without
        touching combat code — see game.js's `emit` calls).
        ========================================================= */
-    Game.on(state, 'heroAttack', function () {
-      setHeroSprite('attack');
+    Game.on(state, 'heroAttack', function (payload) {
+      setHeroSprite('attack', { crit: payload.crit });
       flashSwordTrail();
     });
     Game.on(state, 'heroSpell', function () {
