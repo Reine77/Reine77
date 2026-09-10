@@ -50,7 +50,7 @@
   // is picked up immediately — the wrapper reads the CURRENT
   // value of `renderer` every time it's called, a direct
   // reference would have kept calling the old, now-stale one.
-  var loop = Sylvaine.makeLoop(state, function () { renderer.update(); });
+  var loop = Sylvaine.makeLoop(state, function (state, dt) { renderer.update(dt); });
 
   console.log('%cSYLVAINE — Phase 4 (DOM UI)', 'font-weight:bold');
   console.log('Type S.help() for the debug commands.');
@@ -349,7 +349,7 @@
       loop.stop();
       state = Game.createState({ seed: seed === undefined ? 12345 : seed, echo: true });
       renderer = Sylvaine.makeRenderer(state); // rebuilds the rune list against the new state
-      loop = Sylvaine.makeLoop(state, function () { renderer.update(); });
+      loop = Sylvaine.makeLoop(state, function (state, dt) { renderer.update(dt); });
       root.S.state = state;
       root.S.loop = loop;
       loop.start();

@@ -348,25 +348,35 @@
     /* =========================================================
        HERO SPRITE STATE MACHINE
        -------------------------------------------------------
-       Two timers, same "a newer event always wins" rule the old
-       single-image version had, extended to frame stepping:
-         - heroFrameTimer: setInterval that steps through the
-           CURRENTLY PLAYING variant's frames (idle loops forever;
-           attack/hurt/spell play once and stop).
-         - heroRevertTimer: would hold a single-frame state for
-           frameMs before reverting — currently unused, since every
-           state is a real 4-frame animation now, but the player
-           keeps supporting a 1-frame variant (see the `else if`
-           below) because that's exactly the shape a future state
-           with no art yet would need, same as attack/spell used to
-           be. Kept rather than deleted for that reason.
-       Both are real wall-clock timers, independent of game.step's
-       dt, matching every other visual-only timer in this file
-       (flashSwordTrail, hitFlashEnemy, lungeEnemy).
+       Used to be two real wall-clock timers (setInterval for
+       stepping frames, setTimeout for a single-frame hold). That
+       decoupled frame-stepping from the browser's actual paint
+       cycle: if a setInterval tick fired late and then "caught up"
+       with two closely-spaced ticks, an intermediate frame got
+       assigned to .src but the browser never painted it before the
+       next assignment overwrote it — reported as "it still skips
+       frame 3 randomly, sometimes it triggers, most of the time it
+       doesnt." Fixed by making frame-stepping an accumulator driven
+       by update(dt), the same real dt (from requestAnimationFrame,
+       via loop.js) that already drives the rest of the game's
+       rendering — every frame change now happens inside an actual
+       rAF callback, so it's guaranteed a real paint.
+         - heroFrames / heroFrameIdx: the currently playing variant
+           and which frame of it is showing.
+         - heroFrameMs / heroLoop: this variant's per-frame duration
+           and whether it loops (idle) or plays once then reverts to
+           idle (attack/hurt/spell).
+         - heroElapsedMs: accumulates dt*1000 in stepHeroSprite;
+           advances heroFrameIdx once it crosses heroFrameMs (a
+           `while` so a big dt — e.g. a backgrounded tab — can
+           advance multiple frames in one call instead of stalling).
        ========================================================= */
     var heroState = 'idle';
-    var heroFrameTimer = null;
-    var heroRevertTimer = null;
+    var heroFrames = null;
+    var heroFrameIdx = 0;
+    var heroFrameMs = 0;
+    var heroLoop = false;
+    var heroElapsedMs = 0;
 
     // True while a CRIT swing is playing out. Stretching the attack
     // animation to ATTACK_ANIM_TICKS worth of her attackInterval
@@ -387,11 +397,6 @@
     // be allowed to delay.
     var heroCritPlaying = false;
 
-    function stopHeroTimers() {
-      if (heroFrameTimer) { clearInterval(heroFrameTimer); heroFrameTimer = null; }
-      if (heroRevertTimer) { clearTimeout(heroRevertTimer); heroRevertTimer = null; }
-    }
-
     // `opts.crit` only matters for 'attack' — see HERO_ANIM's comment
     // on why that state branches (critVariant is DETERMINISTIC on a
     // crit, not one more option in the random pool).
@@ -407,7 +412,6 @@
     // in a fraction of the time between her real swings, however
     // quick or slow those currently are.
     function setHeroSprite(nextState, opts) {
-      stopHeroTimers();
       heroState = nextState;
 
       var anim = HERO_ANIM[nextState];
@@ -425,55 +429,48 @@
       // rng, not state.rng — this is presentation only (which of the
       // near-identical flourishes plays), never anything a seeded
       // run's outcome should depend on.
-      var frames = pool.length > 1 ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
+      heroFrames = pool.length > 1 ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
+      heroFrameMs = (opts && opts.durationMs) ? opts.durationMs / heroFrames.length : anim.frameMs;
+      heroLoop = !!anim.loop;
+      heroFrameIdx = 0;
+      heroElapsedMs = 0;
+      el.heroSprite.src = heroFrames[heroFrameIdx];
+    }
 
-      var frameMs = (opts && opts.durationMs) ? opts.durationMs / frames.length : anim.frameMs;
-
-      var frameIdx = 0;
-      el.heroSprite.src = frames[frameIdx];
-
-      if (frames.length > 1) {
-        heroFrameTimer = setInterval(function () {
-          frameIdx++;
-          if (frameIdx >= frames.length) {
-            if (anim.loop) {
-              frameIdx = 0;
-            } else {
-              stopHeroTimers();
-              setHeroSprite('idle'); // non-looping animation finished -> back to idle
-              return;
-            }
+    // Advances the currently playing variant by dt (real seconds,
+    // from loop.js's requestAnimationFrame — see update(dt) below).
+    // A `while` loop, not `if`, so a big dt (e.g. a backgrounded tab
+    // waking back up) drains correctly instead of playing one frame
+    // per call forever after.
+    function stepHeroSprite(dt) {
+      if (!heroFrames || heroFrames.length < 2) return;
+      heroElapsedMs += dt * 1000;
+      while (heroElapsedMs >= heroFrameMs) {
+        heroElapsedMs -= heroFrameMs;
+        heroFrameIdx++;
+        if (heroFrameIdx >= heroFrames.length) {
+          if (heroLoop) {
+            heroFrameIdx = 0;
+          } else {
+            setHeroSprite('idle'); // non-looping animation finished -> back to idle
+            return;
           }
-          el.heroSprite.src = frames[frameIdx];
-        }, frameMs);
-      } else if (!anim.loop) {
-        // Single-frame, non-looping: hold for frameMs then revert.
-        // No state currently uses this branch (see the comment
-        // above the timer declarations), but the player supports it.
-        heroRevertTimer = setTimeout(function () {
-          setHeroSprite('idle');
-        }, frameMs);
+        }
       }
+      el.heroSprite.src = heroFrames[heroFrameIdx];
     }
 
     // Starts the idle breathing loop immediately, not just on the
     // first combat event. Deliberately placed HERE, after
-    // heroFrameTimer/heroRevertTimer's own `var` declarations above
-    // — not up with the other init calls near the top of
-    // makeRenderer. Learned this one the hard way once already (see
-    // RUNE_LAYOUT's comment elsewhere in this file): a `var` is
-    // hoisted but NOT yet assigned until execution actually reaches
-    // its declaration line, so calling setHeroSprite('idle') earlier
-    // in the function would store its interval id into
-    // heroFrameTimer, and then the `var heroFrameTimer = null;`
-    // above — executing normally moments later, in the same
-    // synchronous pass through makeRenderer — would silently wipe
-    // that id back to null. The interval itself keeps running,
-    // forever, orphaned: every later setHeroSprite call clears its
-    // OWN timer just fine, but never that first one, and you end up
-    // with two independent idle loops ticking out of phase forever.
-    // Caught by measuring actual setInterval ids over real wall-clock
-    // time, not by reading the code and assuming it was fine.
+    // heroFrames/heroFrameIdx/heroFrameMs/heroLoop/heroElapsedMs's
+    // own `var` declarations above — not up with the other init
+    // calls near the top of makeRenderer. Learned this one the hard
+    // way already (see RUNE_LAYOUT's comment elsewhere in this
+    // file): a `var` is hoisted but NOT yet assigned until execution
+    // actually reaches its declaration line, so calling
+    // setHeroSprite('idle') earlier in the function would have its
+    // writes silently wiped back to their initial values moments
+    // later when those `var` lines execute.
     setHeroSprite('idle');
 
     function flashSwordTrail() {
@@ -1090,7 +1087,14 @@
       scrollBox.scrollTop = scrollBox.scrollHeight;
     }
 
-    function update() {
+    function update(dt) {
+      // dt is real seconds from loop.js's requestAnimationFrame loop
+      // (see main.js). The 7 internal `update();` call sites below
+      // (button click handlers wanting an immediate re-render) call
+      // this with no argument at all, so dt arrives as undefined —
+      // default it to 0 rather than letting stepHeroSprite see NaN.
+      stepHeroSprite(dt || 0);
+
       var hero = state.hero;
       var s = Stats.computeStats(hero);
 
