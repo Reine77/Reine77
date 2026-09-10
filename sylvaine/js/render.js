@@ -368,6 +368,25 @@
     var heroFrameTimer = null;
     var heroRevertTimer = null;
 
+    // True while a CRIT swing is playing out. Stretching the attack
+    // animation to ATTACK_ANIM_TICKS worth of her attackInterval
+    // (above) means it now, BY DESIGN, takes longer than the time
+    // until her next real swing — so without this flag, a crit's
+    // whole point (rare, distinct, worth noticing) never survives:
+    // the very next attack, almost certainly a normal one, cuts it
+    // off before its later, most distinctive frames (the big
+    // windup, the dramatic slash) ever get shown. This is what a
+    // real player reported as "the crit animation never fires" —
+    // measured directly rather than assumed: at the level-1 base
+    // attackInterval, a real attack arrives every ~833ms but the
+    // animation wants ~1667ms to finish, so EVERY attack was cutting
+    // off whatever played before it. See the 'heroAttack' handler,
+    // which is the only thing that checks this flag — hurt/spell/
+    // retreat all still override immediately, same as always;
+    // reacting to getting hit is never something a flourish should
+    // be allowed to delay.
+    var heroCritPlaying = false;
+
     function stopHeroTimers() {
       if (heroFrameTimer) { clearInterval(heroFrameTimer); heroFrameTimer = null; }
       if (heroRevertTimer) { clearTimeout(heroRevertTimer); heroRevertTimer = null; }
@@ -393,11 +412,16 @@
 
       var anim = HERO_ANIM[nextState];
       var pool;
+      var isCrit = false;
       if (anim.normalVariants) {
-        pool = (opts && opts.crit) ? [anim.critVariant] : anim.normalVariants;
+        isCrit = !!(opts && opts.crit);
+        pool = isCrit ? [anim.critVariant] : anim.normalVariants;
       } else {
         pool = anim.variants;
       }
+      // Any transition away from a crit swing — completing normally,
+      // or getting overridden by hurt/spell/idle — clears the lock.
+      heroCritPlaying = isCrit;
       // rng, not state.rng — this is presentation only (which of the
       // near-identical flourishes plays), never anything a seeded
       // run's outcome should depend on.
@@ -531,17 +555,32 @@
        touching combat code — see game.js's `emit` calls).
        ========================================================= */
     Game.on(state, 'heroAttack', function (payload) {
+      // A crit already playing gets to finish — see heroCritPlaying's
+      // own comment for why: at typical attack speeds the animation
+      // now takes LONGER than the gap until the next real swing, so
+      // letting every attack interrupt whatever's currently playing
+      // (which is fine for two interchangeable normal swings) meant
+      // a crit's distinctive later frames were being cut off by the
+      // very next hit, almost always a normal one, before a player
+      // could ever register it happened. flashSwordTrail still
+      // plays either way — the sword-flash effect isn't tied to
+      // which pose is showing.
+      if (heroCritPlaying && !payload.crit) {
+        flashSwordTrail();
+        return;
+      }
+
       // Spread the swing animation across ATTACK_ANIM_TICKS worth of
       // her CURRENT attackInterval (seconds -> ms), not a fixed
       // duration — a fixed one either drags at high attack speed
       // (many real swings pass before it finishes) or, the complaint
       // this fixed, blurs past at low attack speed (the animation
       // finishes in a fraction of the real time between swings and
-      // reads as too fast). Every new attack still interrupts
-      // whatever's currently playing (setHeroSprite always does),
-      // so a faster attacker naturally sees the swing restart more
-      // often mid-flight — that's fine, each variant's first frame
-      // reads as a fresh swing start either way.
+      // reads as too fast). A normal attack still interrupts
+      // whatever non-crit animation is currently playing, so a
+      // faster attacker naturally sees the swing restart more often
+      // mid-flight — that's fine, each variant's first frame reads
+      // as a fresh swing start either way.
       var attackIntervalMs = Stats.computeStats(state.hero).attackInterval * 1000;
       setHeroSprite('attack', { crit: payload.crit, durationMs: attackIntervalMs * ATTACK_ANIM_TICKS });
       flashSwordTrail();
