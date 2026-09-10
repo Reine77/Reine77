@@ -64,6 +64,17 @@
   var HIT_FLASH_MS = 80;   // enemy brightness spike duration
   var LUNGE_MS = 90;       // enemy attack-tell hold time
 
+  // How many of her own real attack ticks the swing animation should
+  // take to play out, end to end — NOT a fixed millisecond duration.
+  // See the 'heroAttack' handler: her attackInterval varies a lot
+  // over a run (roughly 0.3s-0.8s+ depending on level/runes/gear),
+  // so a fixed duration either blurs past too fast at low attack
+  // speed or drags on for many real swings at high attack speed.
+  // Scaling by HER OWN current interval keeps the animation reading
+  // the same relative to her swing rate no matter how built-up she
+  // is. Retune this one number if the animation still feels off.
+  var ATTACK_ANIM_TICKS = 2;
+
   // Build ['prefix_1.png', 'prefix_2.png', ...] — the naming
   // convention every multi-frame hero sheet uses once sliced.
   function frameSet(prefix, count) {
@@ -365,6 +376,17 @@
     // `opts.crit` only matters for 'attack' — see HERO_ANIM's comment
     // on why that state branches (critVariant is DETERMINISTIC on a
     // crit, not one more option in the random pool).
+    //
+    // `opts.durationMs`, when given, OVERRIDES anim.frameMs: the
+    // whole animation is stretched (or compressed) to take exactly
+    // that long, spread evenly across however many frames it has,
+    // instead of each frame holding a fixed duration regardless of
+    // context. This is what lets the attack animation's speed track
+    // her actual attackInterval (see the heroAttack handler below) —
+    // a fixed frameMs looked "too fast" specifically because a fast
+    // attacker's swing animation was blowing past its own 4 frames
+    // in a fraction of the time between her real swings, however
+    // quick or slow those currently are.
     function setHeroSprite(nextState, opts) {
       stopHeroTimers();
       heroState = nextState;
@@ -380,6 +402,8 @@
       // near-identical flourishes plays), never anything a seeded
       // run's outcome should depend on.
       var frames = pool.length > 1 ? pool[Math.floor(Math.random() * pool.length)] : pool[0];
+
+      var frameMs = (opts && opts.durationMs) ? opts.durationMs / frames.length : anim.frameMs;
 
       var frameIdx = 0;
       el.heroSprite.src = frames[frameIdx];
@@ -397,14 +421,14 @@
             }
           }
           el.heroSprite.src = frames[frameIdx];
-        }, anim.frameMs);
+        }, frameMs);
       } else if (!anim.loop) {
         // Single-frame, non-looping: hold for frameMs then revert.
         // No state currently uses this branch (see the comment
         // above the timer declarations), but the player supports it.
         heroRevertTimer = setTimeout(function () {
           setHeroSprite('idle');
-        }, anim.frameMs);
+        }, frameMs);
       }
     }
 
@@ -507,7 +531,19 @@
        touching combat code — see game.js's `emit` calls).
        ========================================================= */
     Game.on(state, 'heroAttack', function (payload) {
-      setHeroSprite('attack', { crit: payload.crit });
+      // Spread the swing animation across ATTACK_ANIM_TICKS worth of
+      // her CURRENT attackInterval (seconds -> ms), not a fixed
+      // duration — a fixed one either drags at high attack speed
+      // (many real swings pass before it finishes) or, the complaint
+      // this fixed, blurs past at low attack speed (the animation
+      // finishes in a fraction of the real time between swings and
+      // reads as too fast). Every new attack still interrupts
+      // whatever's currently playing (setHeroSprite always does),
+      // so a faster attacker naturally sees the swing restart more
+      // often mid-flight — that's fine, each variant's first frame
+      // reads as a fresh swing start either way.
+      var attackIntervalMs = Stats.computeStats(state.hero).attackInterval * 1000;
+      setHeroSprite('attack', { crit: payload.crit, durationMs: attackIntervalMs * ATTACK_ANIM_TICKS });
       flashSwordTrail();
     });
     Game.on(state, 'heroSpell', function () {
