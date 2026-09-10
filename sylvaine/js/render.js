@@ -61,17 +61,51 @@
 
   var SPRITE_PATH = 'assets/sprites/';
 
-  // How long a non-idle hero sprite (attack/hurt/spell) holds
-  // before reverting to idle. Matches the spec's "~200ms" pattern.
+  // How long a SINGLE-FRAME hero state (still attack/spell — see
+  // HERO_ANIM's comment) holds before reverting to idle. Matches the
+  // spec's original "~200ms" pattern.
   var HERO_STATE_MS = 200;
   var HIT_FLASH_MS = 80;   // enemy brightness spike duration
   var LUNGE_MS = 90;       // enemy attack-tell hold time
 
-  var HERO_SPRITES = {
-    idle:   SPRITE_PATH + 'sylvaine_idle.png',
-    attack: SPRITE_PATH + 'sylvaine_attack.png',
-    hurt:   SPRITE_PATH + 'sylvaine_hurt.png',
-    spell:  SPRITE_PATH + 'sylvaine_spell.png'
+  // Build ['prefix_1.png', 'prefix_2.png', ...] — the naming
+  // convention every multi-frame hero sheet uses once sliced.
+  function frameSet(prefix, count) {
+    var out = [];
+    for (var i = 1; i <= count; i++) out.push(SPRITE_PATH + prefix + '_' + i + '.png');
+    return out;
+  }
+
+  // Every hero state is a LIST OF VARIANTS (usually one), each
+  // variant a list of one-or-more frames. One shape covers both
+  // "4-frame animation" and "single static image" — a single-frame
+  // variant just has nothing to step through, so the exact same
+  // player code (playHeroFrames, below) handles both without a
+  // special case. `attack` having 3 variants is what "rng whichever
+  // attack1/2/3" turns into: setHeroSprite picks one at random each
+  // time, per the same "render code must never touch state.rng"
+  // rule the boss-token/canWin probes already established — this is
+  // pure presentation, not anything that should perturb a seeded run.
+  //
+  // attack/spell are still single-frame, not the 4-frame sheets they
+  // could be: those source sheets came back as flat RGB with no
+  // alpha channel at all (a near-white, not-quite-uniform background
+  // baked into the pixels), unlike idle/hurt which had real
+  // transparency. Shipping them as-is would flash a visible pale box
+  // behind her on every attack/cast — worse than today's single
+  // clean image — so they stay on the old files until re-exported
+  // with real alpha. See assets/sprites/README.md.
+  var HERO_ANIM = {
+    idle: { variants: [frameSet('sylvaine_idle', 4)], loop: true, frameMs: 260 },
+    hurt: { variants: [frameSet('sylvaine_hurt', 4)], loop: false, frameMs: 70 },
+    attack: {
+      variants: [[SPRITE_PATH + 'sylvaine_attack.png']],
+      loop: false, frameMs: HERO_STATE_MS
+    },
+    spell: {
+      variants: [[SPRITE_PATH + 'sylvaine_spell.png']],
+      loop: false, frameMs: HERO_STATE_MS
+    }
   };
 
   function makeRenderer(state) {
@@ -310,26 +344,87 @@
 
     /* =========================================================
        HERO SPRITE STATE MACHINE
+       -------------------------------------------------------
+       Two timers, same "a newer event always wins" rule the old
+       single-image version had, extended to frame stepping:
+         - heroFrameTimer: setInterval that steps through the
+           CURRENTLY PLAYING variant's frames (idle loops forever;
+           attack/hurt/spell play once and stop).
+         - heroRevertTimer: setTimeout that fires once a non-looping
+           animation's last frame has held for its frameMs, and
+           returns to idle. (A single-frame variant — today's
+           attack/spell — has no interval at all; this timer alone
+           is what "holds HERO_STATE_MS then reverts" for those.)
+       Both are real wall-clock timers, independent of game.step's
+       dt, matching every other visual-only timer in this file
+       (flashSwordTrail, hitFlashEnemy, lungeEnemy).
        ========================================================= */
     var heroState = 'idle';
+    var heroFrameTimer = null;
     var heroRevertTimer = null;
 
-    function setHeroSprite(nextState) {
+    function stopHeroTimers() {
+      if (heroFrameTimer) { clearInterval(heroFrameTimer); heroFrameTimer = null; }
       if (heroRevertTimer) { clearTimeout(heroRevertTimer); heroRevertTimer = null; }
+    }
 
-      if (nextState !== heroState) {
-        heroState = nextState;
-        el.heroSprite.src = HERO_SPRITES[nextState];
-      }
+    function setHeroSprite(nextState) {
+      stopHeroTimers();
+      heroState = nextState;
 
-      if (nextState !== 'idle') {
+      var anim = HERO_ANIM[nextState];
+      // rng, not state.rng — this is presentation only (which of 3
+      // near-identical attack flourishes plays), never anything a
+      // seeded run's outcome should depend on.
+      var frames = anim.variants.length > 1
+        ? anim.variants[Math.floor(Math.random() * anim.variants.length)]
+        : anim.variants[0];
+
+      var frameIdx = 0;
+      el.heroSprite.src = frames[frameIdx];
+
+      if (frames.length > 1) {
+        heroFrameTimer = setInterval(function () {
+          frameIdx++;
+          if (frameIdx >= frames.length) {
+            if (anim.loop) {
+              frameIdx = 0;
+            } else {
+              stopHeroTimers();
+              setHeroSprite('idle'); // non-looping animation finished -> back to idle
+              return;
+            }
+          }
+          el.heroSprite.src = frames[frameIdx];
+        }, anim.frameMs);
+      } else if (!anim.loop) {
+        // Single-frame, non-looping (today's attack/spell): hold for
+        // frameMs then revert, same as the original implementation.
         heroRevertTimer = setTimeout(function () {
-          heroState = 'idle';
-          el.heroSprite.src = HERO_SPRITES.idle;
-          heroRevertTimer = null;
-        }, HERO_STATE_MS);
+          setHeroSprite('idle');
+        }, anim.frameMs);
       }
     }
+
+    // Starts the idle breathing loop immediately, not just on the
+    // first combat event. Deliberately placed HERE, after
+    // heroFrameTimer/heroRevertTimer's own `var` declarations above
+    // — not up with the other init calls near the top of
+    // makeRenderer. Learned this one the hard way once already (see
+    // RUNE_LAYOUT's comment elsewhere in this file): a `var` is
+    // hoisted but NOT yet assigned until execution actually reaches
+    // its declaration line, so calling setHeroSprite('idle') earlier
+    // in the function would store its interval id into
+    // heroFrameTimer, and then the `var heroFrameTimer = null;`
+    // above — executing normally moments later, in the same
+    // synchronous pass through makeRenderer — would silently wipe
+    // that id back to null. The interval itself keeps running,
+    // forever, orphaned: every later setHeroSprite call clears its
+    // OWN timer just fine, but never that first one, and you end up
+    // with two independent idle loops ticking out of phase forever.
+    // Caught by measuring actual setInterval ids over real wall-clock
+    // time, not by reading the code and assuming it was fine.
+    setHeroSprite('idle');
 
     function flashSwordTrail() {
       // No trail file loaded yet -> nothing to flash. Without this
