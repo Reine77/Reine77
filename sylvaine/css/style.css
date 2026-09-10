@@ -246,12 +246,24 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
 .combatant.hero .portrait-placeholder { border-color: var(--hero-dim); }
 .combatant.enemy .portrait-placeholder { border-color: var(--enemy-dim); }
 
-/* Once a real sprite has loaded, the dashed "placeholder" framing
-   stops making sense — render.js adds this class on the image's
-   `load` event so the box reads as art, not as an empty slot. */
-.portrait-placeholder.has-sprite {
+/* Once a real sprite has loaded, the frame isn't needed at all — the
+   art fills the box on its own. `border-color: transparent` (not
+   `border: none`) keeps the exact same box dimensions (this project
+   sets box-sizing: border-box globally), so nothing shifts by a
+   couple of pixels the moment a sprite finishes loading; it just
+   stops being visible.
+
+   This has to be `.combatant.hero .portrait-placeholder.has-sprite` /
+   `.combatant.enemy .portrait-placeholder.has-sprite`, not the
+   plain 2-class version that used to be here — the hero/enemy
+   border-color rules above are already 3 classes deep and a plain
+   `.portrait-placeholder.has-sprite` (2 classes) loses that
+   specificity fight, which is exactly why the hero's dashed-frame
+   green kept showing through even after a real sprite had loaded. */
+.combatant.hero .portrait-placeholder.has-sprite,
+.combatant.enemy .portrait-placeholder.has-sprite {
   border-style: solid;
-  border-color: var(--border);
+  border-color: transparent;
 }
 
 /* ---- sprite layers --------------------------------------------

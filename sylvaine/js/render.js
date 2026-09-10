@@ -193,6 +193,16 @@
     setupImageFallback(el.heroSprite, el.heroPortrait);
     setupImageFallback(el.enemySprite, el.enemyPortrait);
     setupImageFallback(el.swordTrail, null); // trail has no fallback text to reveal
+    // flashSwordTrail() (below) has to know whether there's actually
+    // anything to flash — without this, it would flip the trail's
+    // opacity to 1 on every single attack even with no file loaded,
+    // briefly showing the browser's broken-image glyph instead of a
+    // trail effect. Starts false; a real file existing is what turns
+    // it on, same "art enables the effect, its absence just does
+    // nothing" rule this whole sprite system already follows.
+    var trailReady = false;
+    el.swordTrail.addEventListener('load', function () { trailReady = true; });
+    el.swordTrail.addEventListener('error', function () { trailReady = false; });
 
     // ---- graceful degradation: missing file -> old placeholder --
     // `parentPortrait` is null for the sword trail, which has no
@@ -322,6 +332,13 @@
     }
 
     function flashSwordTrail() {
+      // No trail file loaded yet -> nothing to flash. Without this
+      // guard, every attack would flip the <img>'s opacity to 1
+      // regardless of whether it ever successfully loaded, briefly
+      // showing the browser's broken-image icon instead of quietly
+      // doing nothing.
+      if (!trailReady) return;
+
       // Snap to visible immediately (no fade-in — the swing itself
       // is the "in"), then let the CSS `transition: opacity` on
       // .sword-trail carry it back down to 0 once we flip the
