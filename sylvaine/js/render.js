@@ -558,6 +558,11 @@
     }
 
     function hitFlashEnemy() {
+      // Toggle: CONFIG.effects.enemyHitFlash — off for now (reads
+      // yellow/overexposed on most of the current art at brightness(3)).
+      // Flip it back to true in config.js to restore this exact
+      // effect; nothing else here needs to change either way.
+      if (!CONFIG.effects.enemyHitFlash) return;
       if (enemyHitFlashTimer) clearTimeout(enemyHitFlashTimer);
       el.enemySprite.style.filter =
         (enemyBaseFilter === 'none' ? '' : enemyBaseFilter + ' ') + 'brightness(3)';

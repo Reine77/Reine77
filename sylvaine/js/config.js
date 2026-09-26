@@ -437,6 +437,15 @@
       stageLights: [
         { label: 'brazier', x: 50, y: 12, radius: 55, intensity: 0.85, color: [255, 150, 70] }
       ]
+    },
+
+    /* ---- Combat visual effects toggles --------------------- */
+    effects: {
+      // The brightness(3) flash on an enemy sprite when it takes a
+      // hit (see render.js's hitFlashEnemy) — reads yellow/overexposed
+      // on most of the current art, so it's off for now. Flip back to
+      // true to restore it; nothing else needs to change either way.
+      enemyHitFlash: false
     }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
