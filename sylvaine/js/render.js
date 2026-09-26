@@ -136,6 +136,15 @@
 
       enemyPortrait: document.getElementById('enemyPortrait'),
       enemySprite:   document.getElementById('enemySprite'),
+
+      // Battle-stage lighting (see updateLighting() below): the
+      // outer unit wrapper each unit's CSS light variables get set
+      // on, and #arena as the coordinate space they're measured
+      // against. Not `heroPortrait`/`enemyPortrait` — those are the
+      // sprite BOX one level in; `.combatant` is "the unit" itself.
+      arena:          document.getElementById('arena'),
+      heroCombatant:  document.querySelector('.combatant.hero'),
+      enemyCombatant: document.querySelector('.combatant.enemy'),
       enemyName:     document.getElementById('enemyName'),
       enemyBoss:     document.getElementById('enemyBoss'),
       enemyHpFill:   document.getElementById('enemyHpFill'),
@@ -1052,6 +1061,70 @@
       });
     }
 
+    /* =========================================================
+       BATTLE-STAGE LIGHTING
+       -------------------------------------------------------
+       See js/lighting.js and style.css's "battle-stage lighting"
+       section for the full picture. This is just the "read state
+       (here, actual screen geometry, not game state), write DOM"
+       half — the math itself lives entirely in Lighting.
+
+       Runs every update() tick. That's deliberately cheap: at most
+       a getBoundingClientRect() and a few CSS variable writes per
+       unit, and there are only ever 1-2 units in a battle — nowhere
+       near the "text/width updates on elements built once" budget
+       this file already runs 60-144 times a second for everything
+       else.
+
+       To add/edit lights: see config.js's `lighting.stageLights` —
+       this function never hardcodes a light itself, it only turns
+       whatever Lighting currently has active into CSS variables. */
+    var LIGHT_VARS = ['--light-intensity', '--light-r', '--light-g', '--light-b',
+                       '--light-angle', '--light-origin-x', '--light-origin-y'];
+
+    function applyLight(unitEl) {
+      if (!unitEl) return;
+      var arenaRect = el.arena.getBoundingClientRect();
+      if (arenaRect.width <= 0 || arenaRect.height <= 0) return; // window hidden/collapsed
+
+      var rect = unitEl.getBoundingClientRect();
+      // Same 0-100 normalized space RUNE_LAYOUT/the rune tree SVG
+      // already use elsewhere in this file — see that comment for
+      // why. Measured from the unit's own center, not a corner.
+      var x = ((rect.left + rect.width / 2 - arenaRect.left) / arenaRect.width) * 100;
+      var y = ((rect.top + rect.height / 2 - arenaRect.top) / arenaRect.height) * 100;
+
+      var result = Sylvaine.Lighting.computeUnitLight({ x: x, y: y });
+      if (!result) {
+        // No configured light reaches this unit — leave/clear the
+        // vars entirely rather than writing zeros, so a stage with
+        // no lights (or a unit that's simply too far from all of
+        // them) costs nothing extra and every var()'s CSS fallback
+        // takes over exactly as if this system didn't run.
+        for (var i = 0; i < LIGHT_VARS.length; i++) unitEl.style.removeProperty(LIGHT_VARS[i]);
+        return;
+      }
+
+      unitEl.style.setProperty('--light-intensity', result.intensity.toFixed(3));
+      unitEl.style.setProperty('--light-r', result.r);
+      unitEl.style.setProperty('--light-g', result.g);
+      unitEl.style.setProperty('--light-b', result.b);
+      unitEl.style.setProperty('--light-angle', result.angle + 'deg');
+      unitEl.style.setProperty('--light-origin-x', result.originX.toFixed(1) + '%');
+      unitEl.style.setProperty('--light-origin-y', result.originY.toFixed(1) + '%');
+    }
+
+    function updateLighting() {
+      if (!Sylvaine.Lighting) return; // load-order safety net, same pattern as elsewhere
+      applyLight(el.heroCombatant);
+      applyLight(el.enemyCombatant);
+      // Companions aren't implemented yet (#supportRow's companion
+      // slot is a reserved-layout stub — see this file's top
+      // comment). When they exist, add their own wrapper element to
+      // these two lines; nothing else in the lighting system needs
+      // to change to support a third unit.
+    }
+
     function updateGearPanel() {
       updateEquippedList();
       updateAutoSellControls();
@@ -1181,6 +1254,7 @@
       updateRuneTree(hero);
       updateGearPanel();
       updateLog();
+      updateLighting();
     }
 
     return { update: update };

@@ -65,7 +65,17 @@
       <div class="combatant hero">
         <div class="portrait-placeholder hero-portrait" id="heroPortrait">
           <img class="sword-trail" id="swordTrail" src="assets/sprites/sword_trail.png" alt="">
-          <img class="hero-sprite" id="heroSprite" src="assets/sprites/sylvaine_idle_1.png" alt="Sylvaine">
+          <!-- Lighting system: wraps ONLY the body sprite, never the
+               sword trail above or the fallback text below — see
+               js/lighting.js and style.css's "battle-stage lighting"
+               section. The wrapper carries the brightness/saturation
+               response; the overlay div paints the directional
+               colored glow on top of it, via CSS vars set on the
+               ancestor `.combatant` (js/render.js's updateLighting). -->
+          <div class="sprite-light-fx" id="heroSpriteFx">
+            <img class="hero-sprite" id="heroSprite" src="assets/sprites/sylvaine_idle_1.png" alt="Sylvaine">
+            <div class="light-overlay" id="heroLightOverlay"></div>
+          </div>
           <span class="portrait-fallback">Sylvaine<br>(sprite: Phase 5)</span>
         </div>
         <!-- Sylvaine never gets a boss badge — this reserves the
@@ -96,7 +106,11 @@
 
       <div class="combatant enemy">
         <div class="portrait-placeholder enemy-portrait" id="enemyPortrait">
-          <img class="enemy-sprite" id="enemySprite" alt="">
+          <!-- see the matching comment on the hero's sprite-light-fx above -->
+          <div class="sprite-light-fx" id="enemySpriteFx">
+            <img class="enemy-sprite" id="enemySprite" alt="">
+            <div class="light-overlay" id="enemyLightOverlay"></div>
+          </div>
           <span class="portrait-fallback">Enemy<br>(sprite: Phase 5)</span>
         </div>
         <span class="boss-badge" id="enemyBoss">BOSS</span>
@@ -248,19 +262,24 @@
     attaches itself to one shared global, `window.Sylvaine`, and
     the load order below is the dependency order:
 
-      config  -> plain data, depends on nothing
-      rng     -> plain utility
-      log     -> plain utility
-      stats   -> reads CONFIG
-      items   -> reads CONFIG, Stats (Phase 2 — generation + auto-equip)
-      runes   -> reads Stats (Phase 3 — rune tree + spell-unlock gate)
-      enemies -> reads CONFIG
-      game    -> reads CONFIG, Stats, Enemies, (optionally) Items, Runes
-      loop    -> calls Game.step
-      render  -> reads state, writes DOM (Phase 4) — needs the DOM
-                 elements above to already exist, so it loads after
-                 #app's markup, same as any other script placement
-      main    -> wires it all together, must be last
+      config   -> plain data, depends on nothing
+      rng      -> plain utility
+      log      -> plain utility
+      stats    -> reads CONFIG
+      items    -> reads CONFIG, Stats (Phase 2 — generation + auto-equip)
+      runes    -> reads Stats (Phase 3 — rune tree + spell-unlock gate)
+      enemies  -> reads CONFIG
+      lighting -> reads CONFIG.lighting; pure math, no DOM, no other
+                  module depends on it — sits here (early) only
+                  because it reads CONFIG, same reason stats/items/
+                  runes/enemies all load this early
+      game     -> reads CONFIG, Stats, Enemies, (optionally) Items, Runes
+      loop     -> calls Game.step
+      render   -> reads state, writes DOM (Phase 4) — needs the DOM
+                  elements above to already exist, so it loads after
+                  #app's markup, same as any other script placement.
+                  Also reads Lighting (Sylvaine.Lighting) per frame.
+      main     -> wires it all together, must be last
   -->
   <script src="js/config.js"></script>
   <script src="js/rng.js"></script>
@@ -269,6 +288,7 @@
   <script src="js/items.js"></script>
   <script src="js/runes.js"></script>
   <script src="js/enemies.js"></script>
+  <script src="js/lighting.js"></script>
   <script src="js/game.js"></script>
   <script src="js/loop.js"></script>
   <script src="js/render.js"></script>

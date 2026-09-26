@@ -60,11 +60,15 @@ js/stats.js         computeStats + the dirty-flag cache
 js/items.js         item generation, drop table, auto-equip/auto-sell
 js/runes.js         rune tree data, purchase validation, spell-unlock gate
 js/enemies.js       roster, palette-swap variants, stage curve
+js/lighting.js      battle-stage dynamic lighting: distance -> intensity/
+                    color/direction math only, no DOM (see config.js's
+                    `lighting.stageLights` to add/edit lights)
 js/game.js          all the rules; step(state, dt) is the only entry point
 js/loop.js          requestAnimationFrame + the dt clamp
 js/render.js        reads state, writes DOM — never the reverse. Also
-                    the Phase 5 sprite state machine (hero) and
-                    sprite/filter/effects wiring (enemies)
+                    the Phase 5 sprite state machine (hero),
+                    sprite/filter/effects wiring (enemies), and
+                    per-unit lighting CSS variables (updateLighting)
 js/main.js          browser entry point and the S.* debug API
 tools/simulate.mjs  headless runner
 tools/checks.mjs    sanity assertions

@@ -397,6 +397,46 @@
       // Phase 1 is console-only, so log every swing. Turn this
       // off once there is a real UI or the console will drown.
       logEverySwing: false
+    },
+
+    /* ---- Battle-stage lighting ------------------------------
+       Pure data, read by js/lighting.js — this file adds no
+       lighting LOGIC, same rule as everything else here.
+
+       Coordinates are a 0-100 space over #arena's own box, NOT
+       pixels — the same normalized-coordinate convention the rune
+       tree's RUNE_LAYOUT/SVG viewBox already uses in render.js, so
+       a light's position scales with the arena regardless of
+       window size instead of needing per-resolution tuning.
+
+         x, y      — light position in that 0-100 space (0,0 = top-left
+                     of #arena, 100,100 = bottom-right)
+         radius    — falloff distance, same 0-100 units. A unit at
+                     this distance or beyond gets zero contribution
+                     from this light.
+         intensity — the light's OWN strength, 0-1. Multiplied by the
+                     distance falloff per-unit, so a weak flickering
+                     candle and a strong brazier can share the same
+                     radius but still feel different up close.
+         color     — [r, g, b], 0-255 each.
+
+       To add a light for a specific stage/arena theme later: swap
+       this array (or call Sylvaine.Lighting.setStageLights([...])
+       at runtime, e.g. when a themed arena loads) — nothing else in
+       the lighting system needs to change. An empty array means
+       every unit's lighting CSS variables are simply left unset, so
+       a stage with no lights configured looks exactly like it did
+       before this system existed.
+
+       This one entry is a warm brazier glow near the top of the
+       arena (roughly where the VS badge sits) so the effect is
+       visible out of the box — delete it for a totally dark/neutral
+       default, or add more entries for other fixtures (torch,
+       glowing crystal, portal, ...). */
+    lighting: {
+      stageLights: [
+        { label: 'brazier', x: 50, y: 12, radius: 55, intensity: 0.85, color: [255, 150, 70] }
+      ]
     }
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

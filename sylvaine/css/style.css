@@ -295,15 +295,93 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
   opacity: 0; /* independent of .loaded — see render.js's flashSwordTrail */
   transition: opacity 180ms ease-out;
 }
-.hero-sprite { z-index: 2; }
+/* .hero-sprite/.enemy-sprite no longer need their own z-index — they're
+   now inside .sprite-light-fx (below), which takes that stacking slot
+   instead, since it's the only positioned wrapper at that level now. */
 .enemy-sprite {
-  z-index: 2;
   /* Palette-swap tiers (js/enemies.js's `treatments`) apply a CSS
      hue-rotate here via inline style — see render.js. This
      transition is what makes the hit-flash brightness spike (also
      inline style, layered onto the same filter) look like a flash
      instead of an instant snap. */
   transition: filter 60ms ease-out;
+}
+
+/* ---- battle-stage lighting (dynamic, per-unit) ------------------
+   js/lighting.js computes, per unit, how close it is to the
+   strongest nearby configured light (js/config.js's
+   `lighting.stageLights`); js/render.js's updateLighting() writes
+   the result as CSS custom properties on the unit's `.combatant`
+   wrapper (inherited down to everything below, including these two
+   layers). A unit with no light in range simply never gets these
+   variables set, so every var() below falls back to "no effect" —
+   that's what makes a stage with zero configured lights behave
+   exactly as before this system existed.
+
+     --light-intensity  0-1, how strongly THIS unit is lit right now
+     --light-r/g/b       the (possibly blended) light color, 0-255
+     --light-origin-x/y  where the "lit side" gradient centers,
+                         inside the sprite's own box, offset toward
+                         the light's direction (computed in JS, not
+                         CSS trig, for wider browser support)
+     --light-angle       the same direction as a plain degree value,
+                         kept for anyone debugging in devtools
+
+   Split across two elements on purpose, so this can never collide
+   with the filter/transform this file already uses elsewhere for
+   unrelated effects (enemy hit-flash + palette-tier hue-rotate on
+   `.enemy-sprite` itself; retreat-dim/lunge/death on
+   `.portrait-placeholder`):
+
+     .sprite-light-fx — wraps just the body sprite <img>. Its OWN
+       filter is 100% lighting-driven and nothing else in this file
+       ever touches it, so it layers on top of whatever filter the
+       <img> inside already has (if any) instead of fighting over
+       the same property.
+     .light-overlay — a same-box sibling of the sprite <img>, painted
+       ONE level above it (see index.html — it comes right after the
+       <img> in markup, no z-index needed for that). A radial gradient
+       in the light's color, `mix-blend-mode: screen` so it brightens
+       rather than paints a flat tint, positioned via --light-origin-*
+       so the side of the sprite facing the light is visibly brighter
+       than the far side. Kept as a separate box from the sprite <img>
+       rather than baked into a shared filter so it never touches the
+       sword trail (painted UNDER the wrapper, unaffected) or the
+       fallback text (a sibling of the wrapper, also unaffected). */
+.sprite-light-fx {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2; /* the slot .hero-sprite/.enemy-sprite used to occupy directly */
+  filter:
+    brightness(calc(1 + var(--light-intensity, 0) * 0.28))
+    saturate(calc(1 + var(--light-intensity, 0) * 0.16));
+}
+.light-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: var(--light-intensity, 0);
+  background: radial-gradient(
+    circle at var(--light-origin-x, 50%) var(--light-origin-y, 50%),
+    rgba(var(--light-r, 255), var(--light-g, 255), var(--light-b, 255), 0.9) 0%,
+    rgba(var(--light-r, 255), var(--light-g, 255), var(--light-b, 255), 0) 65%
+  );
+}
+/* Graceful degradation (see this file's Phase 5 sprite comment):
+   before a real PNG exists (or if one 404s), the box shows the
+   placeholder fallback TEXT, not a sprite — there is no "character
+   body" for the glow to react to yet, so it must not draw at all.
+   Without this, the overlay above still paints over the empty/
+   fallback box, which reads as lighting the UI, not the character —
+   exactly what requirement 6 rules out. */
+.hero-sprite:not(.loaded) ~ .light-overlay,
+.enemy-sprite:not(.loaded) ~ .light-overlay {
+  opacity: 0;
 }
 
 .portrait-fallback {
