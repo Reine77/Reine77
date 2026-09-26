@@ -205,6 +205,31 @@ h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: .04em; }
   background: linear-gradient(180deg, #1a1822, #100f16);
 }
 
+/* ---- ground-light layer (temporary battle lights) ---------------
+   See index.html's #arenaFloor comment for why plain DOM order is
+   what keeps this below the combatants without needing a z-index.
+   render.js pools one .ground-light child per active light (by id);
+   each one sets its own inline geometry/color/opacity, since unlike
+   the per-unit CSS-var approach above, several of these can be alive
+   at once with wildly different positions/sizes — a shared class only
+   needs to supply what's common to all of them. */
+#arenaFloor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+.ground-light {
+  position: absolute;
+  /* left/top/width/height/background/opacity/transform: set inline,
+     per instance, by render.js's syncGroundLights(). */
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transform-origin: center center;
+}
+
 .combatant {
   flex: 1 1 50%;
   display: flex;

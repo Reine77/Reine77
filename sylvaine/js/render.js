@@ -75,6 +75,30 @@
   // is. Retune this one number if the animation still feels off.
   var ATTACK_ANIM_TICKS = 2;
 
+  // Battle-light color per elemental attribute — presentation only,
+  // same "never gates anything a seeded run depends on" rule as
+  // HERO_ANIM's random pose picks. Keyed by CONFIG.attributes.all
+  // (config.js), so it already covers every attribute the game can
+  // ever put on an attack/spell, not just the ones currently reachable
+  // (physical/wind by default, +fire/+earth via runes — see
+  // stats.js/runes.js). Used by the 'heroSpell' handler below to color
+  // her spell's battle light by hero.spellAttribute.
+  var ELEMENT_LIGHT_COLORS = {
+    physical: [225, 235, 245], // pale steel — not currently reachable via any spell, kept for completeness
+    fire:     [255, 90, 40],
+    wind:     [180, 255, 210],
+    earth:    [150, 110, 60],
+    dark:     [160, 60, 220],
+    holy:     [255, 250, 220]
+  };
+
+  // The battle-light color for a boss's own attacks — see the
+  // 'heroDamaged' handler below. Not per-boss: every current boss's
+  // `resists` list includes 'dark' (js/enemies.js), tying back to the
+  // "something unified them" corruption thread from the intro, so one
+  // shared void-purple reads as intentional rather than arbitrary.
+  var BOSS_LIGHT_COLOR = [160, 60, 220];
+
   // Build ['prefix_1.png', 'prefix_2.png', ...] — the naming
   // convention every multi-frame hero sheet uses once sliced.
   function frameSet(prefix, count) {
@@ -143,6 +167,7 @@
       // against. Not `heroPortrait`/`enemyPortrait` — those are the
       // sprite BOX one level in; `.combatant` is "the unit" itself.
       arena:          document.getElementById('arena'),
+      arenaFloor:     document.getElementById('arenaFloor'),
       heroCombatant:  document.querySelector('.combatant.hero'),
       enemyCombatant: document.querySelector('.combatant.enemy'),
       enemyName:     document.getElementById('enemyName'),
@@ -593,8 +618,9 @@
     });
     Game.on(state, 'heroSpell', function () {
       setHeroSprite('spell');
+      spawnSpellBattleLight();
     });
-    Game.on(state, 'heroDamaged', function () {
+    Game.on(state, 'heroDamaged', function (payload) {
       // Same moment, two effects: she flinches AND the enemy that
       // just hit her gets the attack-tell lunge. There's no
       // separate 'enemyAttack' event — heroDamaged only fires as a
@@ -602,6 +628,17 @@
       // both sides of that exchange.
       setHeroSprite('hurt');
       lungeEnemy();
+
+      // The one demonstrated "enemy/boss spell" light: a boss's
+      // attacks aren't a real distinct spell system in game.js (every
+      // enemy, boss or not, goes through the same enemyAttack ->
+      // heroDamaged path — see game.js), so this is the closest
+      // honest hook without inventing new combat mechanics. Skipped
+      // on a fully evaded hit (evaded, per game.js's payload) since
+      // nothing visibly landed for a flash to sell.
+      if (payload && payload.enemy && payload.enemy.isBoss && !payload.evaded) {
+        spawnBossImpactLight();
+      }
     });
     Game.on(state, 'retreat', function () {
       // Per the spec: reuse the hurt sprite plus a brief fade/dim
@@ -1082,19 +1119,34 @@
     var LIGHT_VARS = ['--light-intensity', '--light-r', '--light-g', '--light-b',
                        '--light-angle', '--light-origin-x', '--light-origin-y'];
 
-    function applyLight(unitEl) {
-      if (!unitEl) return;
+    // Shared by applyLight() below AND by anything that needs to spawn
+    // a temporary light AT a unit's position (see the 'heroSpell' /
+    // 'heroDamaged' handlers further down) — one place computing the
+    // 0-100 stage-space position of a unit, so a spell's light and a
+    // unit's own lighting response are always measured the exact same
+    // way. Returns null if the arena is currently hidden/collapsed
+    // (e.g. a 0-size layout mid-transition), same as applyLight used
+    // to check inline.
+    function stagePosOf(unitEl) {
+      if (!unitEl) return null;
       var arenaRect = el.arena.getBoundingClientRect();
-      if (arenaRect.width <= 0 || arenaRect.height <= 0) return; // window hidden/collapsed
-
+      if (arenaRect.width <= 0 || arenaRect.height <= 0) return null;
       var rect = unitEl.getBoundingClientRect();
       // Same 0-100 normalized space RUNE_LAYOUT/the rune tree SVG
       // already use elsewhere in this file — see that comment for
       // why. Measured from the unit's own center, not a corner.
-      var x = ((rect.left + rect.width / 2 - arenaRect.left) / arenaRect.width) * 100;
-      var y = ((rect.top + rect.height / 2 - arenaRect.top) / arenaRect.height) * 100;
+      return {
+        x: ((rect.left + rect.width / 2 - arenaRect.left) / arenaRect.width) * 100,
+        y: ((rect.top + rect.height / 2 - arenaRect.top) / arenaRect.height) * 100
+      };
+    }
 
-      var result = Sylvaine.Lighting.computeUnitLight({ x: x, y: y });
+    function applyLight(unitEl) {
+      if (!unitEl) return;
+      var pos = stagePosOf(unitEl);
+      if (!pos) return; // window hidden/collapsed
+
+      var result = Sylvaine.Lighting.computeUnitLight(pos);
       if (!result) {
         // No configured light reaches this unit — leave/clear the
         // vars entirely rather than writing zeros, so a stage with
@@ -1114,8 +1166,101 @@
       unitEl.style.setProperty('--light-origin-y', result.originY.toFixed(1) + '%');
     }
 
-    function updateLighting() {
+    /* ---- GROUND LIGHT DOM POOL --------------------------------
+       One <div class="ground-light"> per currently-active
+       ground-affecting temp light (js/lighting.js's getGroundLights),
+       keyed by that light's id so repeated casts never pile up stale
+       elements: every sync either reuses an existing element for a
+       still-alive light, creates one for a newly-spawned light, or
+       removes one whose light has already expired. That removal is
+       what satisfies "no accumulating DOM nodes" — there is no
+       separate cleanup timer to forget; a light vanishing from
+       getGroundLights() (js/lighting.js's tickTempLights already
+       pruned it) is itself the signal to remove its element, checked
+       fresh every frame. */
+    var groundLightEls = {}; // light id -> <div class="ground-light">
+
+    // Safety net matching buildRuneTree()'s own reset-safety comment:
+    // main.js's S.reset() already calls Lighting.clearTempLights()
+    // before rebuilding the renderer, but that only empties
+    // lighting.js's OWN list — it can't reach into #arenaFloor's DOM
+    // children, which belong to whichever renderer created them. A
+    // fresh makeRenderer() call starts groundLightEls empty above, so
+    // without this, any leftover <div class="ground-light"> from the
+    // previous run's pool would sit there forever, untracked by the
+    // new map and therefore never removed by syncGroundLights().
+    el.arenaFloor.innerHTML = '';
+
+    function styleGroundLight(elDiv, light) {
+      var r = light.color[0], g = light.color[1], b = light.color[2];
+      var opacity = Math.min(1, light.intensity);
+      elDiv.style.opacity = opacity.toFixed(3);
+      elDiv.style.left = light.x + '%';
+      elDiv.style.top = light.y + '%';
+
+      if (light.groundStyle === 'beam') {
+        // An elongated streak along the cast direction: `width` is
+        // its length (along the beam), `height` its thickness —
+        // caller-supplied (see 'heroSpell' below), not derived here,
+        // since only the caller knows the real hero->enemy geometry.
+        var w = light.width != null ? light.width : light.radius * 2;
+        var h = light.height != null ? light.height : Math.max(4, light.radius * 0.25);
+        elDiv.style.width = w + '%';
+        elDiv.style.height = h + '%';
+        elDiv.style.transform = 'translate(-50%, -50%) rotate(' + (-light.angle) + 'deg)';
+        elDiv.style.borderRadius = '999px';
+        elDiv.style.background = 'linear-gradient(90deg, ' +
+          'rgba(' + r + ',' + g + ',' + b + ',0) 0%, ' +
+          'rgba(' + r + ',' + g + ',' + b + ',0.85) 50%, ' +
+          'rgba(' + r + ',' + g + ',' + b + ',0) 100%)';
+      } else {
+        // 'pool' (soft glow puddle) and 'burst' (a tighter, harder
+        // flash) are both a plain centered circle — only the
+        // gradient's falloff shape differs, so they share one branch.
+        var d = (light.width != null ? light.width : light.radius * 2);
+        elDiv.style.width = d + '%';
+        elDiv.style.height = d + '%';
+        elDiv.style.transform = 'translate(-50%, -50%)';
+        elDiv.style.borderRadius = '50%';
+        var midStop = light.groundStyle === 'burst' ? '35%' : '65%';
+        elDiv.style.background = 'radial-gradient(circle, ' +
+          'rgba(' + r + ',' + g + ',' + b + ',0.9) 0%, ' +
+          'rgba(' + r + ',' + g + ',' + b + ',0) ' + midStop + ')';
+      }
+    }
+
+    function syncGroundLights() {
+      var lights = Sylvaine.Lighting.getGroundLights();
+      var seen = {};
+
+      for (var i = 0; i < lights.length; i++) {
+        var light = lights[i];
+        seen[light.id] = true;
+        var elDiv = groundLightEls[light.id];
+        if (!elDiv) {
+          elDiv = document.createElement('div');
+          elDiv.className = 'ground-light';
+          el.arenaFloor.appendChild(elDiv);
+          groundLightEls[light.id] = elDiv;
+        }
+        styleGroundLight(elDiv, light);
+      }
+
+      // Anything pooled from a previous frame whose light isn't in
+      // this frame's list has already expired (js/lighting.js's
+      // tickTempLights removes it on the same cadence this runs) —
+      // remove its element now rather than ever accumulating them.
+      for (var id in groundLightEls) {
+        if (!seen[id]) {
+          groundLightEls[id].remove();
+          delete groundLightEls[id];
+        }
+      }
+    }
+
+    function updateLighting(dtMs) {
       if (!Sylvaine.Lighting) return; // load-order safety net, same pattern as elsewhere
+      Sylvaine.Lighting.tickTempLights(dtMs);
       applyLight(el.heroCombatant);
       applyLight(el.enemyCombatant);
       // Companions aren't implemented yet (#supportRow's companion
@@ -1123,6 +1268,84 @@
       // comment). When they exist, add their own wrapper element to
       // these two lines; nothing else in the lighting system needs
       // to change to support a third unit.
+      syncGroundLights();
+    }
+
+    /* ---- battle-light integrations ----------------------------
+       Two demonstrated hookups per the brief ("don't edit every
+       spell yet") — one player spell, one boss attack. Both just
+       call Sylvaine.Lighting.spawnBattleLight(); nothing about
+       combat/damage/timing changes, and VFX (setHeroSprite,
+       flashSwordTrail, lungeEnemy, hitFlashEnemy) are untouched —
+       these run ALONGSIDE them, not instead of them. */
+
+    // Hooked from 'heroSpell' above. Colored by hero.spellAttribute
+    // (wind by default, fire after the Wyrmfire Communion rune — see
+    // ELEMENT_LIGHT_COLORS), positioned as a beam between her and the
+    // current enemy so both units react and the ground streak aligns
+    // with the actual cast direction, per the brief's beam example.
+    function spawnSpellBattleLight() {
+      if (!Sylvaine.Lighting) return;
+      var heroPos = stagePosOf(el.heroCombatant);
+      var enemyPos = stagePosOf(el.enemyCombatant);
+      if (!heroPos || !enemyPos) return;
+
+      var dx = enemyPos.x - heroPos.x;
+      var dy = enemyPos.y - heroPos.y;
+      var dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      // Direction from hero to enemy, same y-up math convention
+      // computeUnitLight() itself uses (see lighting.js) — kept
+      // consistent so this angle means the same thing everywhere,
+      // even though here it only ever feeds the ground decal's CSS
+      // rotation (styleGroundLight negates it back to screen space).
+      var angle = Math.atan2(-dy, dx) * (180 / Math.PI);
+      var color = ELEMENT_LIGHT_COLORS[state.hero.spellAttribute] || ELEMENT_LIGHT_COLORS.wind;
+
+      Sylvaine.Lighting.spawnBattleLight({
+        x: (heroPos.x + enemyPos.x) / 2,
+        y: (heroPos.y + enemyPos.y) / 2,
+        // Centered at the midpoint with radius == the full hero-enemy
+        // distance puts BOTH units at roughly half falloff, so both
+        // visibly react rather than only whichever is closer to a
+        // point placed at one end.
+        radius: dist,
+        intensity: 0.9,
+        color: color,
+        duration: 450, // "normal spell" band (300-600ms) from the brief
+        fadeIn: 90,
+        fadeOut: 220,
+        affectUnits: true,
+        affectGround: true,
+        groundStyle: 'beam',
+        angle: angle,
+        width: dist,                      // decal spans the full path
+        height: Math.max(4, dist * 0.12)  // thin streak, not a wide bar
+      });
+    }
+
+    // Hooked from 'heroDamaged' above, gated to boss hits only (see
+    // that handler's comment on why this is the honest stand-in for
+    // "enemy/boss spell" given enemies have no separate spell system).
+    // A quick localized flash at the hero's own position — she's the
+    // one just hit, so that's where the impact reads as landing.
+    function spawnBossImpactLight() {
+      if (!Sylvaine.Lighting) return;
+      var heroPos = stagePosOf(el.heroCombatant);
+      if (!heroPos) return;
+
+      Sylvaine.Lighting.spawnBattleLight({
+        x: heroPos.x,
+        y: heroPos.y,
+        radius: 22,
+        intensity: 0.8,
+        color: BOSS_LIGHT_COLOR,
+        duration: 220, // "small attack" band (150-300ms) from the brief
+        fadeIn: 25,
+        fadeOut: 120,
+        affectUnits: true,
+        affectGround: true,
+        groundStyle: 'burst'
+      });
     }
 
     function updateGearPanel() {
@@ -1254,7 +1477,7 @@
       updateRuneTree(hero);
       updateGearPanel();
       updateLog();
-      updateLighting();
+      updateLighting((dt || 0) * 1000);
     }
 
     return { update: update };

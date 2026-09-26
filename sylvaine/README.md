@@ -62,7 +62,12 @@ js/runes.js         rune tree data, purchase validation, spell-unlock gate
 js/enemies.js       roster, palette-swap variants, stage curve
 js/lighting.js      battle-stage dynamic lighting: distance -> intensity/
                     color/direction math only, no DOM (see config.js's
-                    `lighting.stageLights` to add/edit lights)
+                    `lighting.stageLights` for permanent fixtures).
+                    Also temporary battle lights (spawnBattleLight) —
+                    a spell/bright attack briefly lighting up nearby
+                    units and, optionally, a floor decal — see
+                    render.js's 'heroSpell'/'heroDamaged' handlers for
+                    the two demonstrated hookups
 js/game.js          all the rules; step(state, dt) is the only entry point
 js/loop.js          requestAnimationFrame + the dt clamp
 js/render.js        reads state, writes DOM — never the reverse. Also

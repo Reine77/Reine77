@@ -40,6 +40,19 @@
 
     <!-- The VS arena — hero left / enemy right, split-screen frame. -->
     <section id="arena">
+      <!-- Ground-light layer for temporary battle lights (spells/bright
+           attacks with affectGround: true — see js/lighting.js's
+           spawnBattleLight). Deliberately the FIRST child of #arena:
+           #arena and .combatant are both `position: relative` with no
+           explicit z-index, so among same-level positioned siblings
+           paint order follows DOM order — being first means this
+           layer paints above #arena's own background but below both
+           .combatant panels (and therefore below their sprites and
+           any combat VFX), exactly where a floor decal belongs.
+           render.js's syncGroundLights() is the only thing that ever
+           adds/removes children here, pooled by light id — empty
+           whenever no ground-affecting light is currently active. -->
+      <div id="arenaFloor" aria-hidden="true"></div>
       <!--
         Both panels below share the EXACT same row order — portrait,
         badge slot, name, hp bar, substats — on purpose. That's what

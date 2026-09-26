@@ -348,6 +348,13 @@
     reset: function (seed) {
       loop.stop();
       state = Game.createState({ seed: seed === undefined ? 12345 : seed, echo: true });
+      // Battle lights (js/lighting.js) are a module-level singleton,
+      // not part of `state` — without this, a temp light spawned by
+      // the run being reset would sit in Lighting's list, unmatched
+      // by anything in the FRESH renderer's ground-light DOM pool
+      // (that pool starts empty on the next makeRenderer() call
+      // below), and never get its DOM element cleaned up.
+      if (Sylvaine.Lighting) Sylvaine.Lighting.clearTempLights();
       renderer = Sylvaine.makeRenderer(state); // rebuilds the rune list against the new state
       loop = Sylvaine.makeLoop(state, function (state, dt) { renderer.update(dt); });
       root.S.state = state;
